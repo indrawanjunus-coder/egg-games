@@ -1,0 +1,10 @@
+{
+  "app": "Mr. Egg Puzzle Master",
+  "version": 1,
+  "timestamp": "2026-04-17T02:32:17.641Z",
+  "localStorage": {
+    "i18nextLng": "en-US",
+    "egg_lives": "3",
+    "egg_won_max": "10"
+  }
+}
