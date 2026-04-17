@@ -1,0 +1,19 @@
+{
+  "name": "mr-egg-puzzle-master",
+  "version": "1.0.0",
+  "description": "Pixel platformer puzzle PWA, wrapped to Android via Capacitor for real AdMob ads.",
+  "scripts": {
+    "cap:sync": "cap sync android",
+    "cap:open": "cap open android",
+    "cap:build:debug": "cd android && ./gradlew assembleDebug",
+    "cap:build:release": "cd android && ./gradlew assembleRelease"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.0",
+    "@capacitor/core": "^6.1.0",
+    "@capacitor-community/admob": "^6.2.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.0"
+  }
+}
