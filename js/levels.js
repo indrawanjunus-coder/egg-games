@@ -470,6 +470,44 @@ const LEVELS = [
       fallSpeed: 6,                 // kecepatan jatuh
       nailWidth: 6, nailHeight: 18  // slim nail, beda dari spike (18x27)
     }
+  },
+
+  // ---------- LEVEL 14: LARI DARI KANIBAL - chase + drawable walls ----------
+  // Telur exit pintu → 3 kanibal langsung chase. 1 di belakang telur, 2 dekat
+  // pintu keluar untuk block akses. Tanpa tembok, kanibal berhasil tangkap.
+  //
+  // Strategi menang: PAUSE → gambar tembok vertikal (ceiling→ground) untuk
+  // block kanibal. Telur tembus tembok, kanibal tidak. Kanibal yang tertahan
+  // > 500ms akan coba LOMPAT — tembok pendek tidak cukup, gambar sampai tinggi.
+  //
+  // Bedanya dengan Level 13: tidak ada projectile, tapi AI mengejar aktif.
+  {
+    title: "Level 14 - Lari dari Kanibal",
+    hint: "PAUSE! Gambar tembok vertikal untuk block kanibal!",
+    bounds: { x: 40, y: 40, w: 1120, h: 440 },
+    start: { x: 130, y: 388 },
+    doorIn:  { x: 70,   y: 350, w: 48, h: 70 },
+    doorOut: { x: 1080, y: 350, w: 48, h: 70 },
+    platforms: [
+      { x: 40, y: 420, w: 1120, h: 60 }
+    ],
+    hazards: [],
+    slopes: [],
+    trees: [],
+    shieldDrawing: true,  // reuse shield canvas dari Level 13
+    spawner: {
+      type: "cannibal-chase",
+      walkSpeed: 1.5,           // < egg speed (2.2) → bisa outrun kalau bebas
+      jumpVy: -11,              // kekuatan lompat saat blocked
+      blockedMsToJump: 500,     // stuck 0.5s → lompat
+      firstDelayMs: 0,
+      // 3 kanibal: 1 chaser dari belakang, 2 door-blockers
+      cannibals: [
+        { x: 320, y: 420 },     // chaser utama
+        { x: 900, y: 420 },     // near-door blocker 1
+        { x: 1020, y: 420 }     // near-door blocker 2 (paling dekat pintu finish)
+      ]
+    }
   }
 ];
 
