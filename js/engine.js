@@ -1965,8 +1965,9 @@ class Game {
     // Particles
     this.particles.draw(ctx);
 
-    // Drawing mode HUD overlay: instruksi untuk pemain saat pause di level shield
-    if (this.shield && this.paused) this.drawShieldHUD();
+    // Pause overlay: always show "PAUSE" saat game paused. Level dengan shield
+    // dapat subtext tambahan tentang mode gambar.
+    if (this.paused) this.drawPauseHUD();
 
     ctx.restore();
   }
@@ -1992,18 +1993,49 @@ class Game {
     ctx.restore();
   }
 
-  drawShieldHUD() {
+  drawPauseHUD() {
     const ctx = this.ctx;
     const cw = this.canvas.width;
+    const ch = this.canvas.height;
     ctx.save();
-    // Banner di atas canvas
-    ctx.fillStyle = "rgba(29,92,255,0.85)";
-    ctx.fillRect(0, 0, cw, 48);
-    ctx.fillStyle = "#fff";
-    ctx.font = "bold 18px 'Press Start 2P', monospace";
+
+    // Dim overlay tipis supaya PAUSE text menonjol tapi game state masih terlihat
+    ctx.fillStyle = "rgba(15,15,15,0.35)";
+    ctx.fillRect(0, 0, cw, ch);
+
+    // Kartu hitam dengan border tebal - konsisten dengan estetika pixel game
+    const cardW = 320, cardH = this.shield ? 180 : 130;
+    const cardX = (cw - cardW) / 2;
+    const cardY = (ch - cardH) / 2;
+    ctx.fillStyle = "#0f0f0f";
+    ctx.fillRect(cardX, cardY, cardW, cardH);
+    ctx.strokeStyle = "#f7f7f7";
+    ctx.lineWidth = 4;
+    ctx.strokeRect(cardX + 4, cardY + 4, cardW - 8, cardH - 8);
+
+    // "PAUSE" besar di tengah kartu
+    ctx.fillStyle = "#f7f7f7";
+    ctx.font = "bold 44px 'Press Start 2P', monospace";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("MODE GAMBAR: tarik jari/mouse untuk perisai", cw/2, 24);
+    ctx.fillText("PAUSE", cw / 2, cardY + 62);
+
+    // Subtext kecil
+    ctx.font = "14px 'Press Start 2P', monospace";
+    ctx.fillStyle = "#c8c8c8";
+    ctx.fillText("Tekan \u25B6 untuk lanjut", cw / 2, cardY + 102);
+
+    // Kalau level dengan shield drawing: instruksi ekstra
+    if (this.shield) {
+      ctx.fillStyle = "#1d5cff";
+      ctx.fillRect(cardX + 12, cardY + 120, cardW - 24, 48);
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 11px 'Press Start 2P', monospace";
+      ctx.fillText("MODE GAMBAR AKTIF", cw / 2, cardY + 135);
+      ctx.font = "10px 'Press Start 2P', monospace";
+      ctx.fillText("Tarik jari/mouse = perisai", cw / 2, cardY + 154);
+    }
+
     ctx.restore();
   }
 
