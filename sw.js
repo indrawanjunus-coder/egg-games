@@ -1,5 +1,5 @@
 // Service Worker untuk offline caching - bisa main tanpa internet setelah install
-const CACHE_VERSION = "egg-v25";  // bump: AdMob production defaults + config migration
+const CACHE_VERSION = "egg-v27";  // bump: shield as egg platform (L14 dual-use)
 const ASSETS = [
   "./",
   "./index.html",
