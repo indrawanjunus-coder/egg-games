@@ -1,4 +1,8 @@
 (() => {
+  // App version — ditampilkan di home screen. Bump manual saat release
+  // signifikan (level baru, fitur besar). Bukan cache version SW.
+  window.APP_VERSION = "1.1.0";
+
   const canvas = document.getElementById("game");
   const levelNum = document.getElementById("level-num");
   const overlay = document.getElementById("overlay");
