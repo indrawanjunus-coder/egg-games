@@ -105,6 +105,7 @@
     "package.json",
     "capacitor.config.json",
     "js/levels.js",
+    "js/shield-draw.js",
     "js/engine.js",
     "js/admob-bridge.js",
     "js/ads.js",
