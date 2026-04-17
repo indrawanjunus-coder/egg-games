@@ -472,6 +472,8 @@ class Game {
     this.spawnWarnings = [];
     this.fallingSpikes = [];
     this.groundSpikes = [];
+    this.fallingNails = [];
+    this.shield = null;
     this.nextSpawnMs = 0;
     this.spawnerElapsed = 0;
 
@@ -538,8 +540,15 @@ class Game {
     this.spawnWarnings = [];
     this.fallingSpikes = [];
     this.groundSpikes = [];
+    this.fallingNails = [];     // level 13: hujan paku tanpa warning (nail-rain)
     this.spawnerElapsed = 0;
     this.nextSpawnMs = def.spawner ? (def.spawner.firstDelayMs || 1200) : 0;
+    // Shield drawing (level 13+): reset canvas tiap load level
+    if (def.shieldDrawing && window.ShieldCanvas) {
+      this.shield = new window.ShieldCanvas();
+    } else {
+      this.shield = null;
+    }
     // Hot-stones spawner pakai field nextStoneMs (sama seperti stone-rain di L10).
     // Init dengan firstDelayMs supaya tidak fire frame 1.
     if (def.spawner && def.spawner.type === "hot-stones") {
@@ -1069,6 +1078,7 @@ class Game {
     if (sp.type === "fork-throw") return this.updateForkThrow(dt);
     if (sp.type === "giant-foot") return this.updateGiantFoot(dt);
     if (sp.type === "hot-stones") return this.updateHotStones(dt);
+    if (sp.type === "nail-rain") return this.updateNailRain(dt);
 
     this.spawnerElapsed += dt;
     const ramp = Math.min(2.0, 1 + this.spawnerElapsed / 15000);
@@ -1526,6 +1536,85 @@ class Game {
     }
   }
 
+  // -------------- Nail rain (level 13) --------------
+  // Hujan paku padat, tanpa warning. Pemain WAJIB pause + gambar shield.
+  // Paku yang menyentuh shield → hancur + particle effect.
+  // Paku yang menyentuh ground → tetap di sana sebentar sebagai tumpukan, lalu hilang.
+  updateNailRain(dt) {
+    const cfg = this.level.spawner;
+    this.spawnerElapsed += dt;
+    this.nextSpawnMs -= dt;
+
+    // Spawn: 1 paku per tick (dense). Tidak ada warning triangle.
+    while (this.nextSpawnMs <= 0) {
+      const x = cfg.zoneX + Math.random() * cfg.zoneW;
+      this.fallingNails.push({
+        x, y: cfg.ceilingY || 50,
+        w: cfg.nailWidth || 6, h: cfg.nailHeight || 18,
+        vy: (cfg.fallSpeed || 6) + Math.random() * 1.5
+      });
+      this.nextSpawnMs += (cfg.minIntervalMs || 40) +
+        Math.random() * ((cfg.maxIntervalMs || 90) - (cfg.minIntervalMs || 40));
+    }
+
+    // Update nails: gravity + shield collision + ground check + egg hit
+    const groundY = (this.level.platforms[0] || {}).y || 440;
+    const shield = this.shield;
+
+    for (let i = this.fallingNails.length - 1; i >= 0; i--) {
+      const n = this.fallingNails[i];
+      n.vy += 0.15;  // sedikit gravity supaya terasa jatuh
+      n.y += n.vy;
+
+      // Cek shield block: titik tip paku (bottom center)
+      if (shield) {
+        const tipX = n.x, tipY = n.y + n.h;
+        const hitStroke = shield.blocksPoint(tipX, tipY);
+        if (hitStroke >= 0) {
+          shield.onHit(hitStroke);
+          this.particles.emit(3, tipX, tipY, {
+            life: 200, color: "#888", shape: "block",
+            sizeMin: 1, sizeMax: 2, speedMin: 1, speedMax: 2.5,
+            angle: -Math.PI/2, spread: Math.PI, gravity: 0.15
+          });
+          this.fallingNails.splice(i, 1);
+          continue;
+        }
+      }
+
+      // Hit ground
+      let hitGround = false;
+      for (const p of this.level.platforms) {
+        if (n.x >= p.x && n.x <= p.x + p.w && n.y + n.h >= p.y) {
+          hitGround = true;
+          this.particles.emit(2, n.x, p.y, {
+            life: 300, color: "#bbb", shape: "block",
+            sizeMin: 1, sizeMax: 2, speedMin: 1, speedMax: 2,
+            angle: -Math.PI/2, spread: Math.PI, gravity: 0.1
+          });
+          break;
+        }
+      }
+      if (hitGround) { this.fallingNails.splice(i, 1); continue; }
+      // Off-screen bottom
+      if (n.y > groundY + 80) { this.fallingNails.splice(i, 1); continue; }
+
+      // Hit egg
+      if (this.egg.state !== STATE.BROKEN) {
+        const eggR = this.egg.rect();
+        const nR = { x: n.x - n.w/2, y: n.y, w: n.w, h: n.h };
+        if (rectsOverlap(eggR, nR)) {
+          this.egg.state = STATE.BROKEN;
+          this.egg.vx = 0; this.egg.vy = 0;
+          this.sound.crack();
+          this.emitShellBurst();
+          this.onEvent({ type: "broken", reason: "tertimpa hujan paku" });
+          this.fallingNails.splice(i, 1);
+        }
+      }
+    }
+  }
+
   // -------------- Pipa shelter check (level 10) --------------
   // Telur dianggap "sembunyi" kalau center-x-nya berada dalam mulut pipa
   // DAN bottom telur dekat dengan tanah (tidak sedang melompat di luar pipa).
@@ -1867,9 +1956,54 @@ class Game {
     // Stone rain warnings + falling stones (level 10 / 12 hot stones)
     if (this.stoneWarnings.length || this.stones.length) this.drawStoneRain();
 
+    // Nail rain (level 13): di atas egg supaya jelas paku yang akan menimpa
+    if (this.fallingNails && this.fallingNails.length) this.drawNails();
+
+    // Shield drawing (level 13): di atas nails supaya visible sebagai perisai
+    if (this.shield) this.shield.draw(ctx);
+
     // Particles
     this.particles.draw(ctx);
 
+    // Drawing mode HUD overlay: instruksi untuk pemain saat pause di level shield
+    if (this.shield && this.paused) this.drawShieldHUD();
+
+    ctx.restore();
+  }
+
+  drawNails() {
+    const ctx = this.ctx;
+    ctx.save();
+    for (const n of this.fallingNails) {
+      // Paku: garis vertikal metal dengan tip tajam di bawah
+      ctx.fillStyle = "#3a3a3a";
+      ctx.fillRect(n.x - n.w/2, n.y, n.w, n.h - 4);
+      // Tip segitiga
+      ctx.beginPath();
+      ctx.moveTo(n.x - n.w/2, n.y + n.h - 4);
+      ctx.lineTo(n.x + n.w/2, n.y + n.h - 4);
+      ctx.lineTo(n.x, n.y + n.h);
+      ctx.closePath();
+      ctx.fill();
+      // Highlight kiri untuk efek metal
+      ctx.fillStyle = "#7a7a7a";
+      ctx.fillRect(n.x - n.w/2, n.y, 1, n.h - 4);
+    }
+    ctx.restore();
+  }
+
+  drawShieldHUD() {
+    const ctx = this.ctx;
+    const cw = this.canvas.width;
+    ctx.save();
+    // Banner di atas canvas
+    ctx.fillStyle = "rgba(29,92,255,0.85)";
+    ctx.fillRect(0, 0, cw, 48);
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 18px 'Press Start 2P', monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("MODE GAMBAR: tarik jari/mouse untuk perisai", cw/2, 24);
     ctx.restore();
   }
 
@@ -2834,6 +2968,16 @@ class Game {
     }
     return null;
   }
+
+  // ----- Shield drawing (level 13) API untuk main.js -----
+  // Drawing mode aktif saat level punya shield DAN game sedang pause.
+  isShieldDrawingMode() {
+    return !!(this.shield && this.paused && this.mode !== "home");
+  }
+  shieldBeginStroke(x, y) { if (this.shield) return this.shield.beginStroke(x, y); return false; }
+  shieldAddPoint(x, y)    { if (this.shield) this.shield.addPoint(x, y); }
+  shieldEndStroke()       { if (this.shield) this.shield.endStroke(); }
+  shieldClear()           { if (this.shield) this.shield.clear(); }
 
   // Pindahkan box/door ke posisi target dengan resolusi collision
   dragBoxTo(box, targetX, targetY) {
