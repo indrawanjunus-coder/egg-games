@@ -558,7 +558,11 @@ class Game {
     this.forks = [];
     this.cannibals = (def.spawner && def.spawner.type === "fork-throw")
       ? (def.spawner.cannibals || []).map(c => ({...c, throwT: (def.spawner.firstDelayMs || 1500), throwAnim: 0}))
-      : [];
+      : (def.spawner && def.spawner.type === "cannibal-chase")
+        ? (def.spawner.cannibals || []).map(c => ({
+            ...c, vy: 0, jumping: false, blockedMs: 0, startY: c.y
+          }))
+        : [];
     this.onEvent({ type: "mode", mode: "playing" });
   }
 
@@ -903,6 +907,37 @@ class Game {
         }
       }
     }
+    // Shield stroke sebagai platform (level 14+). Pemain gambar garis → telur
+    // bisa berdiri di atasnya. Hanya segmen ~horizontal yang jadi pijakan
+    // (segmen vertikal di-skip supaya tembok tidak jadi pijakan di ujungnya).
+    if (this.shield && this.shield.strokes.length) {
+      const eggCx = egg.x + egg.w / 2;
+      const eggBottom = egg.y + egg.h;
+      const prevBottom = eggBottom - egg.vy;
+      for (const stroke of this.shield.strokes) {
+        const pts = stroke.points;
+        for (let i = 0; i < pts.length - 1; i++) {
+          const A = pts[i], B = pts[i+1];
+          // Skip segmen (nyaris) vertikal — dinding bukan lantai
+          if (Math.abs(B.x - A.x) < 4) continue;
+          const minX = Math.min(A.x, B.x), maxX = Math.max(A.x, B.x);
+          // Broadphase: egg harus overlap x range segmen
+          if (egg.x + egg.w < minX || egg.x > maxX) continue;
+          // Narrowphase: interp line y at egg center x
+          if (eggCx < minX || eggCx > maxX) continue;
+          const t = (eggCx - A.x) / (B.x - A.x);
+          const lineY = A.y + (B.y - A.y) * t;
+          // Landing: jatuh DARI atas (prevBottom di atas line, sekarang menyeberang)
+          // Toleransi 2px supaya snap terasa halus, tidak jitter.
+          if (egg.vy > 0 && prevBottom <= lineY + 2 && eggBottom >= lineY - 2) {
+            egg.y = lineY - egg.h;
+            if (egg.vy > 0.1) landed = true;
+            egg.vy = 0;
+            egg.onGround = true;
+          }
+        }
+      }
+    }
     return landed;
   }
 
@@ -1079,6 +1114,7 @@ class Game {
     if (sp.type === "giant-foot") return this.updateGiantFoot(dt);
     if (sp.type === "hot-stones") return this.updateHotStones(dt);
     if (sp.type === "nail-rain") return this.updateNailRain(dt);
+    if (sp.type === "cannibal-chase") return this.updateCannibalChase(dt);
 
     this.spawnerElapsed += dt;
     const ramp = Math.min(2.0, 1 + this.spawnerElapsed / 15000);
@@ -1615,6 +1651,84 @@ class Game {
     }
   }
 
+  // -------------- Cannibal chase (level 14) --------------
+  // Kanibal mengejar telur. Bisa jalan horizontal, di-block oleh shield
+  // (tembok gambar). Stuck > N ms → coba lompat. Sentuhan ke telur = pecah.
+  //
+  // Design choice: shield block kanibal TAPI tidak block telur. Asimetri ini
+  // yang bikin drawing mechanic menarik — pemain gambar wall yang hanya
+  // memblokir musuh, bebas dilewati sendiri.
+  updateCannibalChase(dt) {
+    const sp = this.level.spawner;
+    if (!sp || !this.cannibals) return;
+    this.spawnerElapsed += dt;
+    if (this.spawnerElapsed < (sp.firstDelayMs || 0)) return;
+
+    const eggCx = this.egg.x + this.egg.w / 2;
+    const eggCy = this.egg.y + this.egg.h / 2;
+    const walkSpeed = sp.walkSpeed || 1.5;
+    const groundY = (this.level.platforms[0] || {}).y || 420;
+
+    for (const c of this.cannibals) {
+      // Apply gravity / jumping
+      if (c.jumping) {
+        c.vy += 0.5;
+        c.y += c.vy;
+        if (c.y >= c.startY) {
+          c.y = c.startY;
+          c.vy = 0;
+          c.jumping = false;
+        }
+      }
+
+      // Horizontal chase: arahkan ke telur
+      const dx = eggCx - c.x;
+      if (Math.abs(dx) > 2 && !c.jumping) {
+        const dir = Math.sign(dx);
+        const targetX = c.x + dir * walkSpeed * (dt / 16);  // scale ke 60fps equivalent
+        if (this._cannibalCanMoveTo(c, targetX)) {
+          c.x = targetX;
+          c.blockedMs = 0;
+          c.facing = dir;
+        } else {
+          // Blocked oleh shield. Akumulasi waktu → trigger jump.
+          c.blockedMs += dt;
+          if (c.blockedMs > (sp.blockedMsToJump || 500)) {
+            c.vy = sp.jumpVy || -11;
+            c.jumping = true;
+            c.blockedMs = 0;
+          }
+        }
+      }
+
+      // Catch egg — AABB check
+      if (this.egg.state !== STATE.BROKEN) {
+        const CANN_HALFW = 14, CANN_H = 44;
+        const cx0 = c.x - CANN_HALFW, cy0 = c.y - CANN_H;
+        const cRect = { x: cx0, y: cy0, w: CANN_HALFW*2, h: CANN_H };
+        if (rectsOverlap(this.egg.rect(), cRect)) {
+          this.egg.state = STATE.BROKEN;
+          this.egg.vx = 0; this.egg.vy = 0;
+          this.sound.crack();
+          this.emitShellBurst();
+          this.onEvent({ type: "broken", reason: "tertangkap kanibal" });
+          return;
+        }
+      }
+    }
+  }
+
+  // Sample body height kanibal → kalau ada 1 titik yang diblokir shield,
+  // kanibal tidak bisa lewat. Ini membuat shield vertikal efektif sebagai tembok.
+  _cannibalCanMoveTo(c, newX) {
+    if (!this.shield) return true;
+    // Sample 5 titik dari kaki ke kepala (y = c.y sampai c.y - 40)
+    for (let dy = 0; dy <= 40; dy += 10) {
+      if (this.shield.blocksPoint(newX, c.y - dy) >= 0) return false;
+    }
+    return true;
+  }
+
   // -------------- Pipa shelter check (level 10) --------------
   // Telur dianggap "sembunyi" kalau center-x-nya berada dalam mulut pipa
   // DAN bottom telur dekat dengan tanah (tidak sedang melompat di luar pipa).
@@ -1926,6 +2040,11 @@ class Game {
     // Mattresses (kasur) di-render setelah bridges supaya tampak di atasnya
     if (this.mattresses) for (const m of this.mattresses) this.drawMattress(m);
 
+    // Shield drawing (level 13+): render SEBELUM egg sebagai "platform" —
+    // egg bisa berdiri di atasnya (level 14), jadi visual hierarchy:
+    // shield sebagai obstacle/pijakan di BELAKANG egg.
+    if (this.shield) this.shield.draw(ctx);
+
     // BalloonRods (level 11)
     if (this.balloonRods) for (const rod of this.balloonRods) this.drawBalloonRod(rod);
 
@@ -1958,9 +2077,6 @@ class Game {
 
     // Nail rain (level 13): di atas egg supaya jelas paku yang akan menimpa
     if (this.fallingNails && this.fallingNails.length) this.drawNails();
-
-    // Shield drawing (level 13): di atas nails supaya visible sebagai perisai
-    if (this.shield) this.shield.draw(ctx);
 
     // Particles
     this.particles.draw(ctx);
@@ -2829,6 +2945,13 @@ class Game {
     ctx.font = "bold 22px 'Press Start 2P', monospace";
     ctx.fillStyle = C.D;
     ctx.fillText("PUZZLE MASTER", canvas.width/2, 150);
+
+    // App version (pojok kanan-atas) — quick identify build yang dipasang
+    ctx.font = "bold 11px 'Press Start 2P', monospace";
+    ctx.fillStyle = C.L;
+    ctx.textAlign = "right";
+    ctx.fillText("v" + (window.APP_VERSION || "?"), canvas.width - 18, 28);
+    ctx.textAlign = "center";
 
     // Define buttons - conditional berdasar homeView
     this.homeBtns = [];
