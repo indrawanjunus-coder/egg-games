@@ -435,6 +435,41 @@ const LEVELS = [
       fallSpeed: 7,
       countMin: 1, countMax: 2
     }
+  },
+
+  // ---------- LEVEL 13: GAMBAR PERISAI - hujan paku padat ----------
+  // Telur masuk pintu → langsung muncul hujan paku padat tanpa warning, tidak
+  // bisa dilewati. Pemain WAJIB klik PAUSE lalu gambar garis perlindungan
+  // dengan touchscreen/mouse. Garis = perisai yang block paku. Unpause lalu
+  // jalan di bawah perisai ke pintu keluar.
+  //
+  // Mekanik baru: spawner "nail-rain" — dense + no warning + random full-width.
+  // Pemain menang dengan navigasi strategis + gambar shield strategis.
+  {
+    title: "Level 13 - Gambar Perisai",
+    hint: "PAUSE, gambar garis perisai dari hujan paku, lalu lanjut!",
+    bounds: { x: 40, y: 40, w: 1120, h: 440 },
+    start: { x: 100, y: 388 },
+    doorIn:  { x: 70,   y: 350, w: 48, h: 70 },
+    doorOut: { x: 1080, y: 350, w: 48, h: 70 },
+    platforms: [
+      { x: 40, y: 420, w: 1120, h: 60 }
+    ],
+    hazards: [],
+    slopes: [],
+    trees: [],
+    // Level ini enable shield drawing saat pause. Engine akan buat ShieldCanvas.
+    shieldDrawing: true,
+    spawner: {
+      type: "nail-rain",
+      zoneX: 40, zoneW: 1120,      // full width
+      ceilingY: 50,                 // paku spawn dari atas canvas
+      minIntervalMs: 40,            // padat: tiap 40-90ms muncul 1 paku
+      maxIntervalMs: 90,
+      firstDelayMs: 400,            // jeda 0.4s setelah spawn egg (biar bisa pause)
+      fallSpeed: 6,                 // kecepatan jatuh
+      nailWidth: 6, nailHeight: 18  // slim nail, beda dari spike (18x27)
+    }
   }
 ];
 
