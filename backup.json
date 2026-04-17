@@ -1,11 +1,9 @@
 {
   "app": "Mr. Egg Puzzle Master",
   "version": 1,
-  "timestamp": "2026-04-17T08:26:10.115Z",
+  "timestamp": "2026-04-17T08:37:45.097Z",
   "localStorage": {
     "egg_lives": "3",
-    "i18nextLng": "en-US",
-    "egg_admob_cfg": "{\"enabled\":true,\"adMode\":\"test\",\"appId\":\"ca-app-pub-3940256099942544~3347511713\",\"interstitialId\":\"ca-app-pub-3940256099942544/1033173712\",\"rewardedId\":\"ca-app-pub-3940256099942544/5224354917\",\"bannerId\":\"ca-app-pub-3940256099942544/6300978111\",\"testDeviceIds\":\"\"}",
-    "egg_won_max": "10"
+    "egg_won_max": "12"
   }
 }
