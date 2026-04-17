@@ -321,12 +321,23 @@
 
   let dragBox = null;
   let dragOffset = { x: 0, y: 0 };
+  let drawingShield = false;  // level 13: sedang menggambar garis perisai
 
   canvas.addEventListener("pointerdown", (e) => {
     const p = canvasPoint(e);
     if (game.mode === "home") {
       const btn = game.hitHomeButton(p.x, p.y);
       if (btn) btn.handler();
+      return;
+    }
+    // Shield drawing mode (level 13 paused) — pointer events untuk gambar.
+    // Cek DULU sebelum balloon/box supaya drawing tidak conflict dengan drag.
+    if (game.isShieldDrawingMode()) {
+      if (game.shieldBeginStroke(p.x, p.y)) {
+        drawingShield = true;
+        canvas.setPointerCapture(e.pointerId);
+      }
+      e.preventDefault();
       return;
     }
     // Cek balon dulu (level 11) - pop pakai single click
@@ -351,12 +362,21 @@
   });
 
   canvas.addEventListener("pointermove", (e) => {
+    if (drawingShield) {
+      const p = canvasPoint(e);
+      game.shieldAddPoint(p.x, p.y);
+      return;
+    }
     if (!dragBox) return;
     const p = canvasPoint(e);
     game.dragBoxTo(dragBox, p.x - dragOffset.x, p.y - dragOffset.y);
   });
 
   function endDrag() {
+    if (drawingShield) {
+      game.shieldEndStroke();
+      drawingShield = false;
+    }
     if (dragBox) {
       dragBox.dragging = false;
       dragBox.beingDragged = false;
@@ -370,6 +390,21 @@
   const unlockAudio = () => { game.sound.unlock(); };
   window.addEventListener("pointerdown", unlockAudio, { once: true });
   window.addEventListener("keydown", unlockAudio, { once: true });
+
+  // Restart game loop setelah ad close. Android WebView sering pause
+  // requestAnimationFrame saat AdMob fullscreen activity aktif, dan tidak
+  // auto-resume. game.stop()/start() bikin rAF loop baru.
+  // Dispatched dari admob-bridge.js:kickWebViewAfterAd().
+  window.addEventListener("admob-ad-closed", () => {
+    console.log("[main] ad-closed event — restarting game loop");
+    try {
+      game.stop();
+      game.start();
+      fitCanvas();
+    } catch (e) {
+      console.error("[main] restart after ad failed", e);
+    }
+  });
 
   // ---------- Auto fullscreen di mobile ----------
   // Browser modern HARUS user gesture sebelum requestFullscreen. Jadi kita pasang
