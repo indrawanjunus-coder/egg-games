@@ -14,6 +14,10 @@
 // ============================================================================
 (() => {
   const ADMOB_CFG_KEY = "egg_admob_cfg";
+  // Bump kalau default IDs / mode berubah. loadConfig() auto-migrate stored
+  // config yang punya version < CONFIG_VERSION ke default baru. Tanpa ini,
+  // user lama dgn config tersimpan tidak akan pernah lihat default baru.
+  const CONFIG_VERSION = 2;
 
   // ---------- Log buffer ----------
   // Circular buffer untuk debugging AdMob integration. Admin bisa lihat di
@@ -45,18 +49,19 @@
 
   function getDefault() {
     return {
-      enabled: false,
-      // Mode: "test" = pakai Google test ad units (aman untuk QA).
-      //       "production" = pakai custom ad unit IDs user.
-      adMode: "test",
-      appId: "",              // ca-app-pub-XXXXXXXXXXXXX~YYYYYYYY
-      interstitialId: "",     // ca-app-pub-XXXXXXXXXXXXX/YYYYYYYY (production)
-      rewardedId: "",
-      bannerId: "",
+      _v: CONFIG_VERSION,
+      // Production-ready defaults: real AdMob IDs milik Arena Gourmet.
+      // Mode production + enabled → langsung serve real ads di APK.
+      enabled: true,
+      adMode: "production",
+      appId:          "ca-app-pub-9382323242686833~7060583623",
+      interstitialId: "ca-app-pub-9382323242686833/5601830590",
+      rewardedId:     "ca-app-pub-9382323242686833/9737576215",
+      bannerId:       "ca-app-pub-9382323242686833/3938242596",
       // Test device IDs - comma-separated MD5 hashes. Diterapkan native wrapper
       // (Android Capacitor plugin) ke RequestConfiguration.setTestDeviceIds().
-      // Dapatkan hash dari logcat saat jalan app di device. Optional — kalau
-      // pakai adMode=test dengan test unit IDs, device IDs tidak wajib.
+      // Dapatkan hash dari logcat saat jalan app di device. Isi dengan hash
+      // device development-mu supaya ads tetap test ads walau mode=production.
       testDeviceIds: ""
     };
   }
@@ -65,7 +70,16 @@
     try {
       const raw = localStorage.getItem(ADMOB_CFG_KEY);
       if (!raw) return getDefault();
-      return { ...getDefault(), ...JSON.parse(raw) };
+      const stored = JSON.parse(raw);
+      // Auto-migrate: kalau stored tidak punya _v atau _v < current, reset
+      // ke default baru. User lama akan pick up production IDs on next launch.
+      if (!stored._v || stored._v < CONFIG_VERSION) {
+        const fresh = getDefault();
+        localStorage.setItem(ADMOB_CFG_KEY, JSON.stringify(fresh));
+        log("info", `Config migrated v${stored._v || 0} → v${CONFIG_VERSION} (reset to new defaults)`);
+        return fresh;
+      }
+      return { ...getDefault(), ...stored };
     } catch (e) {
       return getDefault();
     }
