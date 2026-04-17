@@ -1,5 +1,5 @@
 // Service Worker untuk offline caching - bisa main tanpa internet setelah install
-const CACHE_VERSION = "egg-v20";  // bump: pre-flight check sebelum push
+const CACHE_VERSION = "egg-v23";  // bump: fix hang setelah ad close (WebView kick + loop restart)
 const ASSETS = [
   "./",
   "./index.html",
@@ -7,6 +7,7 @@ const ASSETS = [
   "./manifest.webmanifest",
   "./icon.svg",
   "./js/levels.js",
+  "./js/shield-draw.js",
   "./js/engine.js",
   "./js/admob-bridge.js",
   "./js/ads.js",
