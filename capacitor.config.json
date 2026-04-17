@@ -10,9 +10,9 @@
   },
   "plugins": {
     "AdMob": {
-      "appId": "ca-app-pub-3940256099942544~3347511713",
+      "appId": "ca-app-pub-9382323242686833~7060583623",
       "testingDevices": [],
-      "initializeForTesting": true
+      "initializeForTesting": false
     }
   }
 }
