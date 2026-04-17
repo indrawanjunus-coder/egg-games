@@ -1,5 +1,5 @@
 // Service Worker untuk offline caching - bisa main tanpa internet setelah install
-const CACHE_VERSION = "egg-v23";  // bump: fix hang setelah ad close (WebView kick + loop restart)
+const CACHE_VERSION = "egg-v25";  // bump: AdMob production defaults + config migration
 const ASSETS = [
   "./",
   "./index.html",
