@@ -1,7 +1,7 @@
 {
   "name": "Mr. Egg - Puzzle Master",
   "short_name": "Mr.Egg",
-  "description": "Pixel platformer puzzle - bantu telur kabur lewat 5 level penuh tantangan!",
+  "description": "Pixel platformer puzzle — help the egg escape through challenging levels!",
   "start_url": "./index.html",
   "scope": "./",
   "display": "fullscreen",
@@ -10,7 +10,7 @@
   "background_color": "#f7f7f7",
   "theme_color": "#0f0f0f",
   "categories": ["games", "entertainment"],
-  "lang": "id",
+  "lang": "en",
   "icons": [
     {
       "src": "icon.svg",
