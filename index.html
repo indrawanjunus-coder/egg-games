@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
@@ -35,7 +35,7 @@
       <button id="btn-hint" class="icon-btn" aria-label="Hint">&#63;</button>
       <button id="btn-admin" class="icon-btn" aria-label="Admin" hidden style="display:none;">&#9881;</button>
       <div class="level-label">Level <span id="level-num">1</span></div>
-      <div class="lives-display" id="lives-display" aria-label="Nyawa">
+      <div class="lives-display" id="lives-display" aria-label="Lives">
         <span class="heart" id="heart-1">&#9829;</span>
         <span class="heart" id="heart-2">&#9829;</span>
         <span class="heart" id="heart-3">&#9829;</span>
@@ -47,13 +47,13 @@
     <div class="overlay" id="overlay" hidden>
       <div class="overlay-card">
         <h2 id="overlay-title">Level Clear!</h2>
-        <p id="overlay-msg">Telur berhasil kabur lewat pintu.</p>
+        <p id="overlay-msg">The egg escaped through the door.</p>
         <div class="overlay-lives" id="overlay-lives" aria-hidden="true"></div>
         <div class="overlay-actions">
-          <button id="btn-retry">Ulangi</button>
-          <button id="btn-next">Lanjut</button>
-          <button id="btn-extend" hidden>+1 NYAWA (IKLAN)</button>
-          <button id="btn-restart-ad" hidden>ULANG LEVEL (IKLAN)</button>
+          <button id="btn-retry">Retry</button>
+          <button id="btn-next">Next</button>
+          <button id="btn-extend" hidden>+1 LIFE (AD)</button>
+          <button id="btn-restart-ad" hidden>RESTART LEVEL (AD)</button>
           <button id="btn-ovhome">Home</button>
         </div>
       </div>
@@ -63,18 +63,18 @@
     <div class="ad-simulator" id="ad-simulator" hidden>
       <div class="ad-sim-card">
         <div class="ad-sim-label" id="ad-sim-title">REWARDED AD</div>
-        <div class="ad-sim-body" id="ad-sim-body">[Simulator iklan]</div>
+        <div class="ad-sim-body" id="ad-sim-body">[Ad simulator]</div>
         <div class="ad-sim-timer" id="ad-sim-timer">5s</div>
-        <button id="ad-sim-skip" disabled>Skip dalam 5s</button>
+        <button id="ad-sim-skip" disabled>Skip in 5s</button>
       </div>
     </div>
 
     <div class="controls">
       <div class="dpad">
-        <button id="btn-left" class="dbtn" aria-label="Kiri">&#10094;</button>
-        <button id="btn-right" class="dbtn" aria-label="Kanan">&#10095;</button>
+        <button id="btn-left" class="dbtn" aria-label="Left">&#10094;</button>
+        <button id="btn-right" class="dbtn" aria-label="Right">&#10095;</button>
       </div>
-      <button id="btn-jump" class="dbtn jump" aria-label="Loncat">&#9650;</button>
+      <button id="btn-jump" class="dbtn jump" aria-label="Jump">&#9650;</button>
     </div>
   </div>
 
@@ -82,13 +82,13 @@
   <div class="admin-modal" id="admin-login" hidden>
     <div class="admin-card">
       <h2>ADMIN LOGIN</h2>
-      <p class="admin-note">Catatan: otentikasi client-side bisa dibypass via DevTools. Bukan keamanan asli.</p>
+      <p class="admin-note">Note: client-side auth can be bypassed via DevTools. Not real security.</p>
       <label>User <input type="text" id="adm-user" autocomplete="off" /></label>
       <label>Password <input type="password" id="adm-pwd" autocomplete="off" /></label>
       <div id="adm-login-err" class="admin-err"></div>
       <div class="admin-actions">
         <button id="adm-do-login">LOGIN</button>
-        <button id="adm-login-cancel" class="secondary">BATAL</button>
+        <button id="adm-login-cancel" class="secondary">CANCEL</button>
       </div>
     </div>
   </div>
@@ -99,19 +99,19 @@
       <h2>ADMIN SETTINGS</h2>
 
       <fieldset>
-        <legend>Ganti Password</legend>
-        <label>Lama <input type="password" id="adm-old-pwd" autocomplete="off" /></label>
-        <label>Baru <input type="password" id="adm-new-pwd" autocomplete="off" /></label>
-        <label>Konfirmasi <input type="password" id="adm-new-pwd2" autocomplete="off" /></label>
+        <legend>Change Password</legend>
+        <label>Current <input type="password" id="adm-old-pwd" autocomplete="off" /></label>
+        <label>New <input type="password" id="adm-new-pwd" autocomplete="off" /></label>
+        <label>Confirm <input type="password" id="adm-new-pwd2" autocomplete="off" /></label>
         <div class="admin-row">
-          <button id="adm-change-pwd">UBAH PASSWORD</button>
+          <button id="adm-change-pwd">CHANGE PASSWORD</button>
           <span id="adm-pwd-msg" class="admin-msg"></span>
         </div>
       </fieldset>
 
       <fieldset>
         <legend>Backup Database</legend>
-        <p class="admin-hint">Download semua data (localStorage) sebagai JSON file.</p>
+        <p class="admin-hint">Download all data (localStorage) as JSON file.</p>
         <div class="admin-row">
           <button id="adm-export">DOWNLOAD BACKUP</button>
           <span id="adm-export-msg" class="admin-msg"></span>
@@ -119,49 +119,49 @@
       </fieldset>
 
       <fieldset>
-        <legend>Push Semua ke GitHub</legend>
-        <p class="admin-hint">Push semua source files (HTML, CSS, JS, manifest, icon, sw) + DB backup ke repo GitHub. Butuh Personal Access Token dengan scope "repo". Token TIDAK disimpan.</p>
+        <legend>Push All to GitHub</legend>
+        <p class="admin-hint">Push all source files (HTML, CSS, JS, manifest, icon, sw) + DB backup to a GitHub repo. Requires a Personal Access Token with "repo" scope. Token is NOT stored.</p>
         <label>Token <input type="password" id="adm-gh-token" autocomplete="off" placeholder="ghp_..." /></label>
         <label>Owner <input type="text" id="adm-gh-owner" autocomplete="off" placeholder="username" /></label>
         <label>Repo <input type="text" id="adm-gh-repo" autocomplete="off" placeholder="my-egg-game" /></label>
-        <label>Folder <input type="text" id="adm-gh-path" autocomplete="off" placeholder="(kosong = root repo)" /></label>
+        <label>Folder <input type="text" id="adm-gh-path" autocomplete="off" placeholder="(blank = repo root)" /></label>
         <div class="admin-row">
-          <button id="adm-push">PUSH SEMUA FILE + DB</button>
+          <button id="adm-push">PUSH ALL FILES + DB</button>
           <span id="adm-push-msg" class="admin-msg"></span>
         </div>
       </fieldset>
 
       <fieldset>
         <legend>AdMob Google</legend>
-        <p class="admin-hint">Connect ke Google AdMob. Iklan tampil saat pemain butuh nyawa tambahan atau ulang level. Format App ID: ca-app-pub-XXXX~YYYY. Format Unit ID: ca-app-pub-XXXX/YYYY.</p>
-        <label><input type="checkbox" id="adm-ads-enabled" /> Aktifkan iklan</label>
+        <p class="admin-hint">Connect to Google AdMob. Ads shown when player needs extra life or restart. App ID format: ca-app-pub-XXXX~YYYY. Unit ID format: ca-app-pub-XXXX/YYYY.</p>
+        <label><input type="checkbox" id="adm-ads-enabled" /> Enable ads</label>
         <div class="admin-row">
           <span style="font-size:10px;">Mode:</span>
           <label style="flex: 0 0 auto;"><input type="radio" name="adm-ads-mode" id="adm-ads-mode-test" value="test" checked /> Test</label>
           <label style="flex: 0 0 auto;"><input type="radio" name="adm-ads-mode" id="adm-ads-mode-prod" value="production" /> Production</label>
         </div>
-        <p class="admin-hint" style="margin-top: 8px;">Mode <b>Test</b>: pakai Google test ad unit IDs (aman untuk QA, tidak invalid-click real ads). Mode <b>Production</b>: pakai Unit ID yang Anda isi di bawah.</p>
+        <p class="admin-hint" style="margin-top: 8px;"><b>Test</b> mode: use Google test ad unit IDs (safe for QA, no invalid-click on real ads). <b>Production</b> mode: use Unit IDs you fill below.</p>
         <label>App ID <input type="text" id="adm-ads-app-id" autocomplete="off" placeholder="ca-app-pub-XXXXXXXXXXXXXXXX~YYYYYYYYYY" /></label>
         <label>Interstitial Unit ID <input type="text" id="adm-ads-interstitial" autocomplete="off" placeholder="ca-app-pub-XXXXXXXXXXXXXXXX/YYYYYYYYYY" /></label>
         <label>Rewarded Unit ID <input type="text" id="adm-ads-rewarded" autocomplete="off" placeholder="ca-app-pub-XXXXXXXXXXXXXXXX/YYYYYYYYYY" /></label>
-        <label>Banner Unit ID <input type="text" id="adm-ads-banner" autocomplete="off" placeholder="(opsional)" /></label>
-        <label>Test Device IDs <input type="text" id="adm-ads-device-ids" autocomplete="off" placeholder="hash1,hash2,... (utk native wrapper)" /></label>
-        <p class="admin-hint">Test Device IDs (comma-separated MD5 hash) dipakai native Android wrapper (Capacitor) via RequestConfiguration.setTestDeviceIds(). Dapatkan hash dari logcat saat run app. Opsional — mode Test di atas sudah cukup untuk QA via test unit IDs.</p>
+        <label>Banner Unit ID <input type="text" id="adm-ads-banner" autocomplete="off" placeholder="(optional)" /></label>
+        <label>Test Device IDs <input type="text" id="adm-ads-device-ids" autocomplete="off" placeholder="hash1,hash2,... (for native wrapper)" /></label>
+        <p class="admin-hint">Test Device IDs (comma-separated MD5 hash) used by the native Android wrapper (Capacitor) via RequestConfiguration.setTestDeviceIds(). Get the hash from logcat while running the app. Optional — Test mode above is enough for QA via test unit IDs.</p>
         <div class="admin-row">
-          <button id="adm-ads-save">SIMPAN ADMOB</button>
+          <button id="adm-ads-save">SAVE ADMOB</button>
           <span id="adm-ads-msg" class="admin-msg"></span>
         </div>
       </fieldset>
 
       <fieldset>
         <legend>Test Levels (No Ads)</legend>
-        <p class="admin-hint">Akses langsung level untuk QA. AdMob bypass, lives restore ke MAX. Level grid auto-generated dari jumlah LEVELS.</p>
+        <p class="admin-hint">Direct level access for QA. AdMob bypass, lives restored to MAX. Button grid auto-generated from the LEVELS list.</p>
         <div class="test-level-grid" id="adm-test-grid"></div>
       </fieldset>
 
       <fieldset>
         <legend>AdMob Log</legend>
-        <p class="admin-hint">Log call AdMob - cek apakah native SDK terdeteksi, ad unit ID dipakai, success/error. Tab modal admin akan auto-refresh log saat dibuka.</p>
+        <p class="admin-hint">AdMob call log — check if native SDK detected, which ad unit ID used, success/error. Admin modal auto-refreshes log on open.</p>
         <textarea id="adm-ads-log" readonly rows="12" style="width:100%; font-family:ui-monospace,monospace; font-size:9px; line-height:1.4; background:#0f0f0f; color:#c8c8c8; border:2px solid #0f0f0f; padding:6px; resize:vertical;"></textarea>
         <div class="admin-row">
           <button id="adm-ads-log-refresh">REFRESH LOG</button>
