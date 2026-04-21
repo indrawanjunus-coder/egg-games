@@ -64,10 +64,10 @@
 
   async function changePassword(oldPwd, newPwd) {
     if (!(await checkLogin(ADMIN_USER, oldPwd))) {
-      throw new Error("Password lama salah");
+      throw new Error("Old password incorrect");
     }
     if (!newPwd || newPwd.length < 4) {
-      throw new Error("Password baru min 4 karakter");
+      throw new Error("New password must be at least 4 characters");
     }
     localStorage.setItem(STORE_PWD_KEY, simpleHash(newPwd));
   }
@@ -177,27 +177,27 @@
     // Step 1: cek token valid (401 = token rusak/expired)
     const userRes = await fetch("https://api.github.com/user", { headers });
     if (userRes.status === 401) {
-      throw new Error("Token invalid/expired. Generate ulang di GitHub → Settings → Developer settings → Personal access tokens.");
+      throw new Error("Token invalid/expired. Regenerate at GitHub → Settings → Developer settings → Personal access tokens.");
     }
     if (!userRes.ok && userRes.status !== 403) {
-      throw new Error(`Token check gagal (${userRes.status}). Cek koneksi internet.`);
+      throw new Error(`Token check failed (${userRes.status}). Check internet connection.`);
     }
     // Step 2: cek repo accessible
     const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers });
     if (repoRes.status === 404) {
       throw new Error(
-        `Repo '${owner}/${repo}' tidak ditemukan. Cek 3 hal: ` +
-        `(1) repo sudah dibuat di GitHub (push API TIDAK auto-create), ` +
-        `(2) ejaan owner & repo case-sensitive, ` +
-        `(3) untuk fine-grained token: pastikan repo include di 'Repository access'.`
+        `Repo '${owner}/${repo}' not found. Check 3 things: ` +
+        `(1) repo exists on GitHub (push API does NOT auto-create), ` +
+        `(2) owner & repo spelling (case-sensitive), ` +
+        `(3) for fine-grained token: ensure repo is included in 'Repository access'.`
       );
     }
     if (repoRes.status === 403) {
-      throw new Error("Token tidak punya scope 'repo'. Classic token: centang 'repo'. Fine-grained: set 'Contents: Read and write'.");
+      throw new Error("Token lacks 'repo' scope. Classic token: check 'repo'. Fine-grained: set 'Contents: Read and write'.");
     }
     if (!repoRes.ok) {
       const txt = await repoRes.text();
-      throw new Error(`Repo check gagal (${repoRes.status}): ${txt.slice(0, 100)}`);
+      throw new Error(`Repo check failed (${repoRes.status}): ${txt.slice(0, 100)}`);
     }
   }
 
@@ -206,7 +206,7 @@
   //   egg-game/index.html, egg-game/js/main.js, dst). Empty = root repo.
   async function pushAllToGitHub({ token, owner, repo, basePath, message }, onProgress) {
     if (!token || !owner || !repo) {
-      throw new Error("Token, owner, repo harus diisi");
+      throw new Error("Token, owner, repo are required");
     }
     await preflightCheck({ token, owner, repo });
 
@@ -348,7 +348,7 @@
         hide(loginModal);
         openSettings();
       } else {
-        errEl.textContent = "User atau password salah";
+        errEl.textContent = "Invalid user or password";
       }
     } catch (e) {
       errEl.textContent = "Error: " + e.message;
@@ -374,12 +374,12 @@
     msg.className = "admin-msg";
     if (newP !== newP2) {
       msg.className = "admin-msg err";
-      msg.textContent = "Konfirmasi tidak cocok";
+      msg.textContent = "Confirmation does not match";
       return;
     }
     try {
       await changePassword(oldP, newP);
-      msg.textContent = "Password berhasil diubah";
+      msg.textContent = "Password changed successfully";
       document.getElementById("adm-old-pwd").value = "";
       document.getElementById("adm-new-pwd").value = "";
       document.getElementById("adm-new-pwd2").value = "";
@@ -395,7 +395,7 @@
     try {
       exportBackupFile();
       msg.className = "admin-msg";
-      msg.textContent = "File terdownload";
+      msg.textContent = "File downloaded";
     } catch (e) {
       msg.className = "admin-msg err";
       msg.textContent = e.message;
@@ -426,7 +426,7 @@
     const msg = document.getElementById("adm-ads-msg");
     msg.className = "admin-msg";
     try {
-      if (!window.EggAds) throw new Error("Modul EggAds belum dimuat");
+      if (!window.EggAds) throw new Error("EggAds module not loaded");
       const prodRadio = document.getElementById("adm-ads-mode-prod");
       const adMode = (prodRadio && prodRadio.checked) ? "production" : "test";
       window.EggAds.saveConfig({
@@ -438,7 +438,7 @@
         bannerId:       document.getElementById("adm-ads-banner").value.trim(),
         testDeviceIds:  document.getElementById("adm-ads-device-ids").value.trim(),
       });
-      msg.textContent = `Settings AdMob tersimpan (mode: ${adMode})`;
+      msg.textContent = `AdMob settings saved (mode: ${adMode})`;
     } catch (e) {
       msg.className = "admin-msg err";
       msg.textContent = e.message;
@@ -450,7 +450,7 @@
     const btn = document.getElementById("adm-push");
     const msg = document.getElementById("adm-push-msg");
     msg.className = "admin-msg";
-    msg.textContent = "Mulai push...";
+    msg.textContent = "Push started...";
     btn.disabled = true;
     try {
       const basePath = document.getElementById("adm-gh-path").value.trim();
@@ -464,14 +464,14 @@
       });
       const okCount = result.total - result.errors.length;
       if (result.errors.length === 0) {
-        msg.textContent = `Berhasil push semua (${result.total} files)`;
+        msg.textContent = `Pushed all (${result.total} files)`;
       } else {
         msg.className = "admin-msg err";
         // Tampilkan alasan error pertama verbatim - user butuh lihat status code
         // GitHub (401/403/404) untuk diagnosa. Sisanya di console.
         const first = result.errors[0];
         const moreCount = result.errors.length - 1;
-        const moreLabel = moreCount > 0 ? ` (+${moreCount} file lain gagal)` : "";
+        const moreLabel = moreCount > 0 ? ` (+${moreCount} more failed)` : "";
         msg.textContent = `Pushed ${okCount}/${result.total}. Error: ${first.err}${moreLabel}`;
         console.warn("Push errors (full):", result.errors);
       }
