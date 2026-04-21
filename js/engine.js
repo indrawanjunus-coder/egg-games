@@ -476,6 +476,13 @@ class Game {
     this.shield = null;
     this.nextSpawnMs = 0;
     this.spawnerElapsed = 0;
+    // Sound-reactive level state (L17)
+    this.soundInput = null;
+    this.soundPlatforms = [];
+    this.chaosState = null;
+    this.pendingSoundStart = false;
+    // Time zone state (L18)
+    this.timeZone = null;
 
     this.dustCooldown = 0;
     this._raf = null;
@@ -512,6 +519,14 @@ class Game {
       doorOut: { ...def.doorOut, beingDragged: false }
     };
     this.egg = new Egg(def.start.x, def.start.y);
+    // L19 invisible: spawn burst saat level load — kasih clue posisi awal
+    // karena telur invisible dari frame 1.
+    if (def.invisibleEgg) {
+      this.particles.emit(14, def.start.x + 12, def.start.y + 30,
+        { life: 520, color: "#d0d0d0", shape: "block",
+          sizeMin: PX, sizeMax: PX*2,
+          speedMin: 1.5, speedMax: 3.5, spread: Math.PI*2, gravity: 0.08 });
+    }
     this.trees = (def.trees || []).map(t => ({
       ...t, state: "standing", angle: 0, elapsed: 0, logAdded: false
     }));
@@ -549,10 +564,79 @@ class Game {
     } else {
       this.shield = null;
     }
+    // Sound-reactive platforms (L17): state fresh per-level.
+    this.soundPlatforms = (def.soundPlatforms || []).map(p => ({
+      ...p, visible: false, alpha: 0, fadeTime: 0
+    }));
+    this.chaosState = null;
+    // Init mic input kalau spawner sound-reactive. start() butuh user gesture,
+    // jadi defer — pendingSoundStart flag akan di-consumed main.js saat
+    // pointerdown pertama di canvas.
+    if (def.spawner && def.spawner.type === "sound-reactive") {
+      if (!this.soundInput && window.SoundInput) {
+        this.soundInput = new window.SoundInput();
+      }
+      this.pendingSoundStart = true;
+    } else {
+      // Clean up mic dari level sebelumnya supaya tidak terus-menerus hidup
+      if (this.soundInput && this.soundInput.active) this.soundInput.stop();
+      this.pendingSoundStart = false;
+    }
+    // Time zone (L18): init null, aktif saat pemain pertama kali place.
+    // Radius dari level config, default 100px. slowFactor 0.05 = 95% slower.
+    if (def.timeZone) {
+      this.timeZone = {
+        x: -999, y: -999,
+        radius: def.timeZone.radius || 100,
+        slowFactor: def.timeZone.slowFactor ?? 0.05,
+        active: false
+      };
+    } else {
+      this.timeZone = null;
+    }
+    // Boss: Giant Hand (L20). State machine init fase "rest" supaya ada jeda
+    // awal sebelum attack pertama.
+    if (def.spawner && def.spawner.type === "giant-hand") {
+      this.giantHand = {
+        phase: "rest",
+        phaseMs: 600,           // initial grace 0.6s
+        targetX: 600,           // locked selama aim phase
+        currentY: def.spawner.handOffTop || -180,
+        hp: def.spawner.initialHp || 3,
+        hitFlashMs: 0,
+        defeated: false
+      };
+      // Init nextStoneMs kalau nested stoneRain present
+      if (def.spawner.stoneRain) {
+        this.nextStoneMs = def.spawner.stoneRain.firstDelayMs || 3000;
+      }
+    } else {
+      this.giantHand = null;
+    }
+    // Catapult state (L20). Push tile sebagai collidable platform supaya
+    // egg bisa berdiri di atas (trigger untuk fire rock).
+    if (def.catapult) {
+      this.catapult = { ...def.catapult, cooldown: 0 };
+      this.rocks = [];
+      this.level.platforms.push({
+        x: def.catapult.x, y: def.catapult.y,
+        w: def.catapult.w, h: def.catapult.h,
+        _catapult: true  // tag supaya rendering bisa skip generic ground draw
+      });
+    } else {
+      this.catapult = null;
+      this.rocks = [];
+    }
     // Hot-stones spawner pakai field nextStoneMs (sama seperti stone-rain di L10).
     // Init dengan firstDelayMs supaya tidak fire frame 1.
     if (def.spawner && def.spawner.type === "hot-stones") {
       this.nextStoneMs = def.spawner.firstDelayMs || 2000;
+    }
+    // Composite spawner: cannibal-chase dengan nested stoneRain (L16 dual-path).
+    // Init nextStoneMs dari nested config supaya pertama kali fire pakai delay
+    // yang benar.
+    if (def.spawner && def.spawner.type === "cannibal-chase" && def.spawner.stoneRain) {
+      this.nextStoneMs = def.spawner.stoneRain.firstDelayMs || 1500;
     }
     // Fork-throw state (level 8)
     this.forks = [];
@@ -643,6 +727,13 @@ class Game {
       const landed = this.resolveVertical();
 
       if (landed) {
+        // L19 invisible: emit landing dust burst supaya pemain tahu posisi telur
+        if (this.level && this.level.invisibleEgg) {
+          this.particles.emit(8, egg.x + egg.w/2, egg.y + egg.h,
+            { life: 400, color: "#d0d0d0", shape: "block",
+              sizeMin: PX, sizeMax: PX*2,
+              speedMin: 1.5, speedMax: 3.2, angle: -Math.PI/2, spread: Math.PI, gravity: 0.15 });
+        }
         // Bridge punya bantalan (level 7) - tidak pecah meski jatuh tinggi.
         const onBridge = this.bridges.some(br =>
           egg.y + egg.h >= br.y - 2 && egg.y + egg.h <= br.y + 2 &&
@@ -675,8 +766,10 @@ class Game {
       this.checkHazards();
       this.updateTrees(dt);
       this.checkTreeCollision();
+      this.updateCrumblingPlatforms(dt);
       this.updateSpawner(dt);
       this.updateTeleportDoor(dt);
+      this.updateCatapultAndRocks(dt);
 
       // Jika ada hazard yang memecahkan telur frame ini, JANGAN lanjut update
       // visual state (yang akan menimpa BROKEN). Ini fix bug "telur pecah masih jalan".
@@ -693,11 +786,17 @@ class Game {
         return;
       }
       if (rectsOverlap(egg.rect(), this.level.doorOut)) {
-        egg.state = STATE.WON;
-        this.sound.win();
-        this.emitSparkleBurst();
-        this.onEvent({ type: "won" });
-        return;
+        // Boss-level gate: L20 butuh giantHand defeated dulu
+        if (this.giantHand && !this.giantHand.defeated) {
+          // Door terkunci — egg tidak bisa masuk, hint visual nanti di render
+          // Silent reject: tidak emit event, tidak set state
+        } else {
+          egg.state = STATE.WON;
+          this.sound.win();
+          this.emitSparkleBurst();
+          this.onEvent({ type: "won" });
+          return;
+        }
       }
 
       if (egg.inWater) egg.state = STATE.FLOAT;
@@ -729,6 +828,7 @@ class Game {
     const egg = this.egg;
     const STEP_UP = 12;
     for (const p of this.level.platforms) {
+      if (p.removed) continue;  // L18 crumbled platform
       const r = egg.rect();
       if (rectsOverlap(r, p)) {
         const penetration = (egg.y + egg.h) - p.y;
@@ -832,6 +932,23 @@ class Game {
         }
       }
     }
+    // Sound-reactive platforms horizontal (L17): only collide kalau visible
+    if (this.soundPlatforms) {
+      for (const p of this.soundPlatforms) {
+        if (p.alpha < 0.5) continue;
+        const r = egg.rect();
+        if (rectsOverlap(r, p)) {
+          const penetration = (egg.y + egg.h) - p.y;
+          if (penetration > 0 && penetration <= STEP_UP && egg.vy >= 0) {
+            egg.y = p.y - egg.h; egg.vy = 0; egg.onGround = true;
+            continue;
+          }
+          if (egg.vx > 0) egg.x = p.x - egg.w;
+          else if (egg.vx < 0) egg.x = p.x + p.w;
+          egg.vx = 0;
+        }
+      }
+    }
     const b = this.level.bounds;
     if (egg.x < b.x) egg.x = b.x;
     if (egg.x + egg.w > b.x + b.w) egg.x = b.x + b.w - egg.w;
@@ -842,6 +959,7 @@ class Game {
     let landed = false;
     egg.onGround = false;
     for (const p of this.level.platforms) {
+      if (p.removed) continue;  // L18 crumbled platform
       const r = egg.rect();
       if (rectsOverlap(r, p)) {
         if (egg.vy > 0) {
@@ -907,6 +1025,24 @@ class Game {
         }
       }
     }
+    // Sound-reactive platforms (level 17): behave like regular platforms tapi
+    // only collide kalau alpha > 0.5 (visible). Fade out smoothly when silent.
+    if (this.soundPlatforms && this.soundPlatforms.length) {
+      for (const p of this.soundPlatforms) {
+        if (p.alpha < 0.5) continue;  // invisible — telur tembus
+        const r = egg.rect();
+        if (rectsOverlap(r, p)) {
+          if (egg.vy > 0) {
+            egg.y = p.y - egg.h;
+            if (egg.vy > 0.1) landed = true;
+            egg.vy = 0; egg.onGround = true;
+          } else if (egg.vy < 0) {
+            egg.y = p.y + p.h; egg.vy = 0;
+          }
+        }
+      }
+    }
+
     // Shield stroke sebagai platform (level 14+). Pemain gambar garis → telur
     // bisa berdiri di atasnya. Hanya segmen ~horizontal yang jadi pijakan
     // (segmen vertikal di-skip supaya tembok tidak jadi pijakan di ujungnya).
@@ -1115,6 +1251,8 @@ class Game {
     if (sp.type === "hot-stones") return this.updateHotStones(dt);
     if (sp.type === "nail-rain") return this.updateNailRain(dt);
     if (sp.type === "cannibal-chase") return this.updateCannibalChase(dt);
+    if (sp.type === "sound-reactive") return this.updateSoundReactive(dt);
+    if (sp.type === "giant-hand") return this.updateGiantHand(dt);
 
     this.spawnerElapsed += dt;
     const ramp = Math.min(2.0, 1 + this.spawnerElapsed / 15000);
@@ -1509,17 +1647,19 @@ class Game {
     for (const w of this.stoneWarnings.filter(w => w.countdown <= 0)) {
       this.stones.push({
         x: w.x, y: (cfg.ceilingY || 70) + 20,
-        vy: cfg.fallSpeed || 7, r: 10, hot: true
+        vy: cfg.fallSpeed || 7, r: 10,
+        hot: cfg.stonesHot !== false  // L18 set stonesHot:false → plain stones
       });
     }
     this.stoneWarnings = this.stoneWarnings.filter(w => w.countdown > 0);
 
-    // Update stones - gravity + ground/egg check
+    // Update stones - gravity + ground/egg check (dengan time dilation L18)
     const groundY = (this.level.platforms[0] || {}).y || 450;
     for (let i = this.stones.length - 1; i >= 0; i--) {
       const s = this.stones[i];
-      s.vy += 0.32;
-      s.y += s.vy;
+      const tdFactor = this._timeDilation(s.x, s.y);
+      s.vy += 0.32 * tdFactor;
+      s.y += s.vy * tdFactor;
 
       // Hit ground (any platform top di area jatuh)
       let hitGround = false;
@@ -1579,9 +1719,14 @@ class Game {
   updateNailRain(dt) {
     const cfg = this.level.spawner;
     this.spawnerElapsed += dt;
-    this.nextSpawnMs -= dt;
+    this._spawnNails(dt, cfg);
+    this._updateNailPhysics(dt);
+  }
 
-    // Spawn: 1 paku per tick (dense). Tidak ada warning triangle.
+  // Helper: spawn nails berdasar cfg. Dipakai updateNailRain (L13) dan
+  // updateSoundReactive chaos mode (L17).
+  _spawnNails(dt, cfg) {
+    this.nextSpawnMs -= dt;
     while (this.nextSpawnMs <= 0) {
       const x = cfg.zoneX + Math.random() * cfg.zoneW;
       this.fallingNails.push({
@@ -1592,17 +1737,19 @@ class Game {
       this.nextSpawnMs += (cfg.minIntervalMs || 40) +
         Math.random() * ((cfg.maxIntervalMs || 90) - (cfg.minIntervalMs || 40));
     }
+  }
 
-    // Update nails: gravity + shield collision + ground check + egg hit
+  // Helper: physics untuk semua fallingNails (gravity + shield + ground + egg).
+  // Run setiap frame, regardless sumber spawn.
+  _updateNailPhysics(dt) {
     const groundY = (this.level.platforms[0] || {}).y || 440;
     const shield = this.shield;
 
     for (let i = this.fallingNails.length - 1; i >= 0; i--) {
       const n = this.fallingNails[i];
-      n.vy += 0.15;  // sedikit gravity supaya terasa jatuh
+      n.vy += 0.15;
       n.y += n.vy;
 
-      // Cek shield block: titik tip paku (bottom center)
       if (shield) {
         const tipX = n.x, tipY = n.y + n.h;
         const hitStroke = shield.blocksPoint(tipX, tipY);
@@ -1618,7 +1765,6 @@ class Game {
         }
       }
 
-      // Hit ground
       let hitGround = false;
       for (const p of this.level.platforms) {
         if (n.x >= p.x && n.x <= p.x + p.w && n.y + n.h >= p.y) {
@@ -1632,10 +1778,8 @@ class Game {
         }
       }
       if (hitGround) { this.fallingNails.splice(i, 1); continue; }
-      // Off-screen bottom
       if (n.y > groundY + 80) { this.fallingNails.splice(i, 1); continue; }
 
-      // Hit egg
       if (this.egg.state !== STATE.BROKEN) {
         const eggR = this.egg.rect();
         const nR = { x: n.x - n.w/2, y: n.y, w: n.w, h: n.h };
@@ -1716,6 +1860,12 @@ class Game {
         }
       }
     }
+
+    // Composite: stoneRain di TOP path (L16). groundY dari nested config
+    // supaya stones stop di level top platform, tidak bleed ke bottom.
+    if (sp.stoneRain) {
+      this.updateStoneRain(dt, sp.stoneRain, sp.stoneRain.groundY || groundY);
+    }
   }
 
   // Sample body height kanibal → kalau ada 1 titik yang diblokir shield,
@@ -1727,6 +1877,290 @@ class Game {
       if (this.shield.blocksPoint(newX, c.y - dy) >= 0) return false;
     }
     return true;
+  }
+
+  // -------------- Crumbling platforms (L18) --------------
+  // Platform dengan `crumble:true` akan countdown saat egg menginjak.
+  // Countdown habis → platform jatuh (vy naik). Off-screen → removed.
+  // Time zone (L18): countdown dan fall di-slow di dalam zone → player
+  // punya lebih banyak waktu di platform yang diproteksi zone.
+  updateCrumblingPlatforms(dt) {
+    if (!this.level || !this.level.platforms) return;
+    const egg = this.egg;
+    const eggBottom = egg.y + egg.h;
+    const eggCx = egg.x + egg.w / 2;
+
+    for (const p of this.level.platforms) {
+      if (!p.crumble || p.removed) continue;
+      // Init state on first encounter
+      if (p.state === undefined) { p.state = "idle"; p.crumbleVy = 0; p.originalY = p.y; }
+
+      const td = this._timeDilation(p.x + p.w/2, p.y);
+
+      if (p.state === "idle") {
+        // Trigger countdown saat egg berdiri di atas (bottom aligned + x range)
+        const standingOn = egg.onGround
+          && Math.abs(eggBottom - p.y) < 3
+          && eggCx >= p.x && eggCx <= p.x + p.w;
+        if (standingOn) {
+          p.state = "countdown";
+          p.crumbleCountdown = p.crumbleDelayMs || 600;
+        }
+      } else if (p.state === "countdown") {
+        p.crumbleCountdown -= dt * td;
+        if (p.crumbleCountdown <= 0) {
+          p.state = "falling";
+          p.crumbleVy = 0;
+        }
+      } else if (p.state === "falling") {
+        p.crumbleVy += 0.5 * td;
+        p.y += p.crumbleVy * td;
+        if (p.y > this.canvas.height + 20) {
+          p.removed = true;
+        }
+      }
+    }
+  }
+
+  // -------------- Giant Hand boss (L20) --------------
+  // State machine: rest → aim → descend → stuck → rise → rest.
+  // Catapult fires rocks yang damage hand selama phase "stuck".
+  updateGiantHand(dt) {
+    const sp = this.level.spawner;
+    const h = this.giantHand;
+    if (!h || h.defeated) return;
+    h.phaseMs -= dt;
+
+    const PALM_W = 120, PALM_H = 60;  // hitbox palm saat stuck
+
+    // --- Phase transitions ---
+    if (h.phaseMs <= 0) {
+      if (h.phase === "rest") {
+        // Lock target ke posisi egg saat ini — egg bisa fake-out dengan pindah
+        h.targetX = Math.max(80, Math.min(this.canvas.width - 80, this.egg.x + this.egg.w/2));
+        h.phase = "aim";
+        h.phaseMs = sp.aimMs || 1200;
+      } else if (h.phase === "aim") {
+        h.phase = "descend";
+        h.phaseMs = sp.descendMs || 400;
+      } else if (h.phase === "descend") {
+        h.phase = "stuck";
+        h.phaseMs = sp.stuckMs || 1000;
+        h.currentY = sp.slamYBase || 420;
+        this.sound.thud();
+        this.shake = Math.max(this.shake, 14);
+        // Emit debu dari tanah tempat slam
+        this.particles.emit(16, h.targetX, h.currentY, {
+          life: 600, color: "#bbb", shape: "block",
+          sizeMin: PX, sizeMax: PX*3, speedMin: 2, speedMax: 5,
+          angle: -Math.PI/2, spread: Math.PI, gravity: 0.2
+        });
+      } else if (h.phase === "stuck") {
+        h.phase = "rise";
+        h.phaseMs = sp.riseMs || 700;
+      } else if (h.phase === "rise") {
+        h.phase = "rest";
+        h.phaseMs = sp.restMs || 1000;
+        h.currentY = sp.handOffTop || -180;
+      }
+    }
+
+    // --- Per-phase position updates ---
+    if (h.phase === "descend") {
+      // Lerp dari handOffTop → slamYBase selama descendMs
+      const prog = 1 - (h.phaseMs / (sp.descendMs || 400));
+      const startY = sp.handOffTop || -180;
+      const endY = sp.slamYBase || 420;
+      h.currentY = startY + (endY - startY) * prog;
+    } else if (h.phase === "rise") {
+      const prog = 1 - (h.phaseMs / (sp.riseMs || 700));
+      const startY = sp.slamYBase || 420;
+      const endY = sp.handOffTop || -180;
+      h.currentY = startY + (endY - startY) * prog;
+    }
+
+    // --- Egg-hand collision (hanya saat hand extend ke ground) ---
+    if ((h.phase === "descend" || h.phase === "stuck") && this.egg.state !== STATE.BROKEN) {
+      const palmRect = {
+        x: h.targetX - PALM_W/2, y: h.currentY - PALM_H/2,
+        w: PALM_W, h: PALM_H
+      };
+      if (rectsOverlap(this.egg.rect(), palmRect)) {
+        this.egg.state = STATE.BROKEN;
+        this.egg.vx = 0; this.egg.vy = 0;
+        this.sound.crack();
+        this.emitShellBurst();
+        this.onEvent({ type: "broken", reason: "tergilas tangan raksasa" });
+        return;
+      }
+    }
+
+    // --- Rock-hand collision (damage) ---
+    // Damage apply di SEMUA fase saat hand visible (descend/stuck/rise), bukan
+    // cuma stuck. Hitbox combined arm+palm = kolom vertikal panjang supaya
+    // rock yang kena arm juga count (bukan cuma palm di ground level).
+    const handVisible = (h.phase === "descend" || h.phase === "stuck" || h.phase === "rise");
+    if (handVisible && this.rocks && this.rocks.length) {
+      // Combined hitbox: palm di bawah + arm column 400px ke atas
+      const handHitbox = {
+        x: h.targetX - PALM_W/2,
+        y: h.currentY - PALM_H/2 - 400,
+        w: PALM_W,
+        h: PALM_H + 400
+      };
+      for (let i = this.rocks.length - 1; i >= 0; i--) {
+        const r = this.rocks[i];
+        const rRect = { x: r.x - 8, y: r.y - 8, w: 16, h: 16 };
+        if (rectsOverlap(handHitbox, rRect)) {
+          h.hp--;
+          this.rocks.splice(i, 1);
+          this.sound.thud();
+          this.sound.crack();  // double cue — lebih feedback
+          this.shake = Math.max(this.shake, 12);
+          // Hit flash indicator untuk render next frame
+          h.hitFlashMs = 200;
+          // Red burst particles di titik impact
+          this.particles.emit(14, r.x, r.y, {
+            life: 500, color: "#e74c3c", shape: "block",
+            sizeMin: PX, sizeMax: PX*2, speedMin: 2.5, speedMax: 5,
+            spread: Math.PI*2, gravity: 0.3
+          });
+          // Emit debris particles juga — visual "tangan retak"
+          this.particles.emit(8, h.targetX, h.currentY, {
+            life: 600, color: "#e0b080", shape: "block",
+            sizeMin: PX, sizeMax: PX*2, speedMin: 1, speedMax: 3,
+            spread: Math.PI*2, gravity: 0.2
+          });
+          if (h.hp <= 0) {
+            h.defeated = true;
+            // Epic particle burst saat defeat
+            this.particles.emit(30, h.targetX, h.currentY, {
+              life: 900, color: "#ffd54f", shape: "star",
+              sizeMin: PX, sizeMax: PX*2, speedMin: 2, speedMax: 6,
+              spread: Math.PI*2, gravity: 0.1
+            });
+            this.sound.win();  // audio cue boss defeated
+            this.shake = Math.max(this.shake, 20);
+          }
+          break;
+        }
+      }
+    }
+
+    // Decrement hit flash timer (dipakai render untuk red tint overlay)
+    if (h.hitFlashMs > 0) h.hitFlashMs = Math.max(0, h.hitFlashMs - dt);
+
+    // Hujan batu random (additional hazard). Sub-routine updateStoneRain
+    // handle spawn + physics + egg collision. Reuse pola L10 giant-foot.
+    if (sp.stoneRain) {
+      const groundY = sp.stoneRain.groundY || 420;
+      this.updateStoneRain(dt, sp.stoneRain, groundY);
+    }
+  }
+
+  // Catapult physics: check apakah egg berdiri di atas, kalau iya dan
+  // cooldown habis → launch rock. Update rocks ballistics tiap frame.
+  updateCatapultAndRocks(dt) {
+    if (!this.catapult) return;
+    const c = this.catapult;
+    c.cooldown = Math.max(0, c.cooldown - dt);
+
+    // Egg di atas catapult? Bottom egg touching catapult top + x range
+    const egg = this.egg;
+    const onCatapult = egg.onGround
+      && Math.abs((egg.y + egg.h) - c.y) < 4
+      && egg.x + egg.w > c.x && egg.x < c.x + c.w;
+    if (onCatapult && c.cooldown <= 0 && egg.state !== STATE.BROKEN) {
+      // Launch rock
+      this.rocks.push({
+        x: c.launchX, y: c.launchY,
+        vx: c.rockVx, vy: c.rockVy
+      });
+      c.cooldown = c.cooldownMs || 1500;
+      this.sound.jump();  // cue audio
+      // Small puff at launch
+      this.particles.emit(6, c.launchX, c.launchY, {
+        life: 300, color: "#c8c8c8", shape: "block",
+        sizeMin: PX, sizeMax: PX*2, speedMin: 1.5, speedMax: 3,
+        angle: -Math.PI/2, spread: 0.8, gravity: 0.2
+      });
+    }
+
+    // Update rocks: gravity + position + off-screen cleanup
+    if (!this.rocks) this.rocks = [];
+    const g = c.rockGravity || 0.45;
+    for (let i = this.rocks.length - 1; i >= 0; i--) {
+      const r = this.rocks[i];
+      r.vy += g;
+      r.x += r.vx;
+      r.y += r.vy;
+      // Off-screen: bottom, right, left (rock bisa bounce? no, destroy simple)
+      if (r.y > this.canvas.height + 40 ||
+          r.x > this.canvas.width + 40 || r.x < -40) {
+        this.rocks.splice(i, 1);
+      }
+    }
+  }
+
+  // -------------- Sound-reactive level (L17) --------------
+  // Mic level → toggle visibility platform (hysteresis) + trigger chaos mode
+  // (hujan paku) saat sustained loud. State machine chaos: idle → triggered →
+  // cooldown. Idempotent — per-frame deterministic.
+  updateSoundReactive(dt) {
+    const sp = this.level.spawner;
+    if (!sp) return;
+    const level = this.soundInput ? this.soundInput.tick() : 0;
+    this._currentSoundLevel = level;
+
+    // ---- Platform visibility dengan hysteresis ----
+    // Above ON threshold → instant visible. Below OFF → mulai fade. Zona
+    // tengah (OFF < L < ON) → keep state (anti-flicker).
+    const ON = sp.platformOnThreshold || 0.15;
+    const OFF = sp.platformOffThreshold || 0.08;
+    const fadeMs = sp.platformFadeMs || 800;
+    for (const p of this.soundPlatforms) {
+      if (level > ON) {
+        p.visible = true; p.alpha = 1; p.fadeTime = 0;
+      } else if (level < OFF) {
+        p.fadeTime += dt;
+        p.alpha = Math.max(0, 1 - p.fadeTime / fadeMs);
+        if (p.alpha <= 0) p.visible = false;
+      }
+      // else: hysteresis zone — preserve
+    }
+
+    // ---- Chaos mode state machine ----
+    if (!this.chaosState) this.chaosState = { phase: "idle", accum: 0, elapsed: 0 };
+    const cs = this.chaosState;
+    const chaosTh = sp.chaosThreshold || 0.55;
+    const chaosSustain = sp.chaosSustainMs || 400;
+    const chaosDuration = sp.chaosDurationMs || 3000;
+
+    if (cs.phase === "idle") {
+      if (level > chaosTh) cs.accum += dt;
+      else cs.accum = Math.max(0, cs.accum - dt);  // decay
+      if (cs.accum >= chaosSustain) {
+        cs.phase = "triggered";
+        cs.elapsed = 0;
+        this.nextSpawnMs = 0;  // fire nail spawn immediately
+        this.sound.warn();
+        this.shake = Math.max(this.shake, 8);
+      }
+    } else if (cs.phase === "triggered") {
+      cs.elapsed += dt;
+      if (sp.chaosNailRain) this._spawnNails(dt, sp.chaosNailRain);
+      if (cs.elapsed >= chaosDuration) {
+        cs.phase = "cooldown";
+        cs.elapsed = 0;
+      }
+    } else if (cs.phase === "cooldown") {
+      cs.elapsed += dt;
+      if (cs.elapsed >= 1500) { cs.phase = "idle"; cs.accum = 0; }
+    }
+
+    // Nails physics run every frame regardless (even selama cooldown supaya
+    // sisa-sisa nail jatuh selesai)
+    if (this.fallingNails.length) this._updateNailPhysics(dt);
   }
 
   // -------------- Pipa shelter check (level 10) --------------
@@ -1903,6 +2337,23 @@ class Game {
       s.vy += 0.3;
       s.y += s.vy;
 
+      // Cek block oleh shield stroke (L13 nail-style, juga berlaku untuk L16).
+      // Stone bottom tip check — kalau di-dekat drawn line → destroyed.
+      if (this.shield) {
+        const hitStroke = this.shield.blocksPoint(s.x, s.y + s.r);
+        if (hitStroke >= 0) {
+          this.shield.onHit(hitStroke);
+          this.particles.emit(4, s.x, s.y + s.r, {
+            life: 280, color: "#8c8c8c", shape: "block",
+            sizeMin: PX, sizeMax: PX*2, speedMin: 1, speedMax: 2.5,
+            angle: -Math.PI/2, spread: Math.PI, gravity: 0.2
+          });
+          this.sound.thud();
+          this.stones.splice(i, 1);
+          continue;
+        }
+      }
+
       // Cek block oleh cap pipa: kalau batu x dalam range cap DAN bottom sentuh cap
       let hitPipe = false;
       for (const p of this.pipes) {
@@ -2015,9 +2466,13 @@ class Game {
       ctx.fillText(hint, hX + 12, b.y + 65);
     }
 
-    // Platforms (tanah / log)
+    // Platforms (tanah / log). Skip crumbled yang sudah jatuh off-screen.
+    // Catapult tile punya render kustom (drawCatapult) — skip generic ground.
     for (const p of this.level.platforms) {
+      if (p.removed) continue;
+      if (p._catapult) continue;  // drawCatapult handles this
       if (p.kind === "log") this.drawLog(p);
+      else if (p.crumble) this.drawCrumblePlatform(p);
       else this.drawGround(p);
     }
 
@@ -2039,6 +2494,30 @@ class Game {
 
     // Mattresses (kasur) di-render setelah bridges supaya tampak di atasnya
     if (this.mattresses) for (const m of this.mattresses) this.drawMattress(m);
+
+    // Sound-reactive platforms (L17): render dengan alpha blending.
+    // Invisible kalau diam, solid kalau berisik. Dashed outline saat semi-fade
+    // untuk visual feedback "ini platform bisa muncul kalau kamu bersuara".
+    if (this.soundPlatforms && this.soundPlatforms.length) {
+      for (const p of this.soundPlatforms) {
+        ctx.save();
+        if (p.alpha <= 0) {
+          // Ghost outline (dashed) untuk hint pemain bahwa platform ADA
+          ctx.globalAlpha = 0.25;
+          ctx.strokeStyle = "#1d5cff";
+          ctx.lineWidth = 2;
+          ctx.setLineDash([6, 6]);
+          ctx.strokeRect(p.x, p.y, p.w, p.h);
+        } else {
+          ctx.globalAlpha = p.alpha;
+          ctx.fillStyle = "#1d5cff";
+          ctx.fillRect(p.x, p.y, p.w, p.h);
+          ctx.fillStyle = "#6b9bff";
+          ctx.fillRect(p.x, p.y, p.w, 3);
+        }
+        ctx.restore();
+      }
+    }
 
     // Shield drawing (level 13+): render SEBELUM egg sebagai "platform" —
     // egg bisa berdiri di atasnya (level 14), jadi visual hierarchy:
@@ -2078,13 +2557,312 @@ class Game {
     // Nail rain (level 13): di atas egg supaya jelas paku yang akan menimpa
     if (this.fallingNails && this.fallingNails.length) this.drawNails();
 
+    // Boss Giant Hand (L20): shadow target + descending arm + HP
+    if (this.giantHand) this.drawGiantHand();
+    // Catapult (L20) — render setelah platforms (egg bisa berdiri di atasnya)
+    if (this.catapult) this.drawCatapult();
+    // Rocks (L20 projectiles) — di atas semua supaya visible
+    if (this.rocks && this.rocks.length) this.drawRocks();
+
     // Particles
     this.particles.draw(ctx);
+
+    // Time zone visual (L18): circle overlay showing active zone
+    if (this.timeZone) this.drawTimeZone();
+
+    // Sound meter HUD (L17): visual level indicator + chaos warning
+    if (this.soundInput) this.drawSoundHUD();
 
     // Pause overlay: always show "PAUSE" saat game paused. Level dengan shield
     // dapat subtext tambahan tentang mode gambar.
     if (this.paused) this.drawPauseHUD();
 
+    ctx.restore();
+  }
+
+  drawCrumblePlatform(p) {
+    const ctx = this.ctx;
+    ctx.save();
+    // Shake saat countdown (visual feedback imminent fall)
+    let shakeX = 0, shakeY = 0;
+    if (p.state === "countdown") {
+      const intensity = 1 - (p.crumbleCountdown / (p.crumbleDelayMs || 600));
+      shakeX = (Math.random() - 0.5) * intensity * 4;
+      shakeY = (Math.random() - 0.5) * intensity * 2;
+    }
+    ctx.translate(shakeX, shakeY);
+    // Body — coklat-abu seperti batu pecah
+    ctx.fillStyle = "#7a6a5a";
+    ctx.fillRect(p.x, p.y, p.w, p.h);
+    ctx.fillStyle = "#4a3a2a";
+    ctx.fillRect(p.x, p.y + p.h - 3, p.w, 3);
+    // Cracks (lebih banyak saat countdown advance)
+    if (p.state === "countdown" || p.state === "falling") {
+      ctx.strokeStyle = "#2a1a0a";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(p.x + p.w * 0.3, p.y);
+      ctx.lineTo(p.x + p.w * 0.35, p.y + p.h);
+      ctx.moveTo(p.x + p.w * 0.7, p.y);
+      ctx.lineTo(p.x + p.w * 0.65, p.y + p.h);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  drawGiantHand() {
+    const h = this.giantHand;
+    if (!h || h.defeated) {
+      if (h && h.defeated) this.drawBossHP();  // still show 0 HP briefly? skip
+      return;
+    }
+    const ctx = this.ctx;
+    const PALM_W = 120, PALM_H = 60;
+
+    // Aim phase: NO ground marker (per user request). Hand visibility saat
+    // descend sudah jadi warning alami — telur baca dari arah bayangan hand
+    // bukan dari shadow ellipse di tanah.
+
+    // Aim phase: tampilkan hand POKING out dari atas screen (setengah visible)
+    // sebagai warning — player lihat di sisi mana hand akan jatuh tanpa shadow.
+    if (h.phase === "aim") {
+      const sp = this.level.spawner;
+      const peekY = (sp.handOffTop || -180) + 80;  // naik dikit dari off-screen
+      ctx.save();
+      const armX = h.targetX - 24;
+      const armH = peekY + PALM_H/2 + 100;
+      ctx.fillStyle = "#e0b080";
+      ctx.fillRect(armX, -100, 48, armH);
+      ctx.fillStyle = "#c89050";
+      ctx.fillRect(armX, -100, 6, armH);
+      ctx.fillStyle = "#0f0f0f";
+      ctx.fillRect(armX - 2, -100, 2, armH);
+      ctx.fillRect(armX + 48, -100, 2, armH);
+      // Palm peeking
+      const palmX = h.targetX - PALM_W/2;
+      ctx.fillStyle = "#e0b080";
+      ctx.fillRect(palmX, peekY - PALM_H/2, PALM_W, PALM_H);
+      ctx.strokeStyle = "#0f0f0f";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(palmX, peekY - PALM_H/2, PALM_W, PALM_H);
+      ctx.restore();
+    }
+
+    // Draw hand (arm + palm). Hand position: h.targetX, h.currentY (palm center-ish)
+    if (h.phase === "descend" || h.phase === "stuck" || h.phase === "rise") {
+      ctx.save();
+      // Hit flash: red tint selama hitFlashMs > 0
+      const hitFlash = h.hitFlashMs > 0 ? (h.hitFlashMs / 200) * 0.7 : 0;
+      // Arm: tall rectangle going UP from palm to off-screen top
+      const armX = h.targetX - 24, armY = h.currentY - PALM_H/2;
+      const armH = Math.max(0, armY + 100);  // arm ke atas canvas
+      ctx.fillStyle = "#e0b080";  // skin tone
+      ctx.fillRect(armX, armY - armH, 48, armH);
+      ctx.fillStyle = "#c89050";  // darker shade side
+      ctx.fillRect(armX, armY - armH, 6, armH);
+      ctx.fillStyle = "#0f0f0f";
+      ctx.fillRect(armX - 2, armY - armH, 2, armH);        // left outline
+      ctx.fillRect(armX + 48, armY - armH, 2, armH);       // right outline
+
+      // Palm (bigger rect at bottom of arm)
+      const palmX = h.targetX - PALM_W/2;
+      const palmY = h.currentY - PALM_H/2;
+      ctx.fillStyle = "#e0b080";
+      ctx.fillRect(palmX, palmY, PALM_W, PALM_H);
+      ctx.fillStyle = "#c89050";
+      ctx.fillRect(palmX, palmY + PALM_H - 8, PALM_W, 8);
+      ctx.strokeStyle = "#0f0f0f";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(palmX, palmY, PALM_W, PALM_H);
+      // Knuckles (4 lines)
+      ctx.fillStyle = "#a87040";
+      for (let i = 0; i < 4; i++) {
+        ctx.fillRect(palmX + 16 + i*22, palmY + 8, 14, 3);
+      }
+      // Cracked ground indicator saat stuck
+      if (h.phase === "stuck") {
+        ctx.fillStyle = "#0f0f0f";
+        for (let i = -3; i <= 3; i++) {
+          ctx.fillRect(h.targetX + i*16 - 1, 420, 2, 6);
+        }
+      }
+      // Red hit-flash overlay di palm area
+      if (hitFlash > 0) {
+        ctx.fillStyle = "rgba(231,76,60," + hitFlash + ")";
+        ctx.fillRect(palmX, palmY, PALM_W, PALM_H);
+      }
+      ctx.restore();
+    }
+
+    this.drawBossHP();
+  }
+
+  drawBossHP() {
+    const h = this.giantHand;
+    if (!h) return;
+    const ctx = this.ctx;
+    const total = (this.level.spawner && this.level.spawner.initialHp) || 3;
+    ctx.save();
+    // Background panel
+    ctx.fillStyle = "rgba(15,15,15,0.6)";
+    ctx.fillRect(this.canvas.width/2 - 120, 10, 240, 36);
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 11px 'Press Start 2P', monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("BOSS HP", this.canvas.width/2, 20);
+    // Hearts
+    const heartSize = 18, gap = 8;
+    const startX = this.canvas.width/2 - ((total * heartSize + (total-1)*gap) / 2);
+    for (let i = 0; i < total; i++) {
+      const hx = startX + i * (heartSize + gap);
+      ctx.fillStyle = i < h.hp ? "#e74c3c" : "#555";
+      ctx.font = heartSize + "px monospace";
+      ctx.textBaseline = "alphabetic";
+      ctx.fillText("\u2764", hx + heartSize/2, 40);
+    }
+    ctx.restore();
+  }
+
+  drawCatapult() {
+    const c = this.catapult;
+    if (!c) return;
+    const ctx = this.ctx;
+    // Base (kayu tebal)
+    ctx.fillStyle = "#6b4423";
+    ctx.fillRect(c.x, c.y, c.w, c.h);
+    // Top platform (tempat injak)
+    ctx.fillStyle = "#8b5a3a";
+    ctx.fillRect(c.x, c.y, c.w, 6);
+    // Side frames
+    ctx.fillStyle = "#4b2a13";
+    ctx.fillRect(c.x, c.y + c.h - 4, c.w, 4);
+    // Outline
+    ctx.strokeStyle = "#0f0f0f";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(c.x, c.y, c.w, c.h);
+    // Arm (lever) hint — small diagonal wood piece
+    ctx.save();
+    ctx.translate(c.x + c.w, c.y + c.h/2);
+    ctx.rotate(-0.5);
+    ctx.fillStyle = "#6b4423";
+    ctx.fillRect(-2, -4, 24, 8);
+    ctx.restore();
+    // Cooldown indicator — merah saat cooldown, hijau saat ready
+    const ready = c.cooldown <= 0;
+    ctx.fillStyle = ready ? "#4caf50" : "#e74c3c";
+    ctx.fillRect(c.x + c.w/2 - 4, c.y - 8, 8, 4);
+  }
+
+  drawRocks() {
+    const ctx = this.ctx;
+    for (const r of this.rocks) {
+      // Rotating rock (visual spin)
+      ctx.save();
+      ctx.translate(r.x, r.y);
+      ctx.rotate((this.timeMs * 0.015) % (Math.PI*2));
+      ctx.fillStyle = "#6b6b6b";
+      ctx.fillRect(-8, -8, 16, 16);
+      ctx.fillStyle = "#4a4a4a";
+      ctx.fillRect(-8, 3, 16, 5);
+      ctx.strokeStyle = "#0f0f0f";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(-8, -8, 16, 16);
+      ctx.restore();
+      // Motion trail
+      ctx.save();
+      ctx.globalAlpha = 0.3;
+      ctx.fillStyle = "#6b6b6b";
+      ctx.fillRect(r.x - r.vx - 6, r.y - r.vy - 6, 12, 12);
+      ctx.restore();
+    }
+  }
+
+  drawTimeZone() {
+    if (!this.timeZone || !this.timeZone.active) return;
+    const ctx = this.ctx;
+    const z = this.timeZone;
+    ctx.save();
+    // Ring luar (pulse) — indikator zona aktif
+    const pulse = 0.7 + 0.3 * Math.sin(this.timeMs * 0.004);
+    ctx.globalAlpha = 0.15 * pulse;
+    ctx.fillStyle = "#29b6f6";
+    ctx.beginPath();
+    ctx.arc(z.x, z.y, z.radius, 0, Math.PI * 2);
+    ctx.fill();
+    // Inner gradient (visual distortion effect)
+    ctx.globalAlpha = 0.35;
+    ctx.strokeStyle = "#0288d1";
+    ctx.lineWidth = 3;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.arc(z.x, z.y, z.radius, 0, Math.PI * 2);
+    ctx.stroke();
+    // Inner ring
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 0.5;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(z.x, z.y, z.radius * 0.7, 0, Math.PI * 2);
+    ctx.stroke();
+    // Clock icon di center untuk hint "waktu"
+    ctx.globalAlpha = 0.7;
+    ctx.fillStyle = "#0288d1";
+    ctx.font = "bold 20px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("⏱", z.x, z.y);
+    ctx.restore();
+  }
+
+  drawSoundHUD() {
+    const ctx = this.ctx;
+    const cw = this.canvas.width;
+    const level = this._currentSoundLevel || 0;
+    const sp = this.level.spawner || {};
+    const chaosTh = sp.chaosThreshold || 0.55;
+    const onTh = sp.platformOnThreshold || 0.15;
+
+    ctx.save();
+    // Meter bar kiri-atas
+    const barX = 80, barY = 24, barW = 300, barH = 16;
+    ctx.fillStyle = "rgba(15,15,15,0.4)";
+    ctx.fillRect(barX - 4, barY - 4, barW + 8, barH + 8);
+    // Background meter (zona)
+    ctx.fillStyle = "rgba(247,247,247,0.25)";
+    ctx.fillRect(barX, barY, barW, barH);
+    // ON threshold marker
+    ctx.fillStyle = "#4caf50";
+    ctx.fillRect(barX + barW * onTh - 1, barY - 2, 2, barH + 4);
+    // CHAOS threshold marker (red)
+    ctx.fillStyle = "#f44336";
+    ctx.fillRect(barX + barW * chaosTh - 1, barY - 2, 2, barH + 4);
+    // Current level fill
+    const fillColor = level > chaosTh ? "#ff4444" : level > onTh ? "#4caf50" : "#aaa";
+    ctx.fillStyle = fillColor;
+    ctx.fillRect(barX, barY, barW * Math.min(1, level), barH);
+    // Label
+    ctx.font = "bold 10px 'Press Start 2P', monospace";
+    ctx.fillStyle = "#fff";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillText("MIC", barX - 46, barY + barH/2);
+    // Status kalau mic belum aktif
+    if (!this.soundInput.isAvailable()) {
+      ctx.fillStyle = "#ff9800";
+      ctx.textAlign = "center";
+      ctx.fillText("TAP layar → izin mic", cw/2, 20);
+    }
+    // Chaos warning banner
+    const cs = this.chaosState;
+    if (cs && cs.phase === "triggered") {
+      ctx.fillStyle = "rgba(244,67,54,0.85)";
+      ctx.fillRect(0, 48, cw, 28);
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 14px 'Press Start 2P', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("⚠ HUJAN PAKU — JANGAN BERISIK!", cw/2, 62);
+    }
     ctx.restore();
   }
 
@@ -2120,7 +2898,7 @@ class Game {
     ctx.fillRect(0, 0, cw, ch);
 
     // Kartu hitam dengan border tebal - konsisten dengan estetika pixel game
-    const cardW = 320, cardH = this.shield ? 180 : 130;
+    const cardW = 320, cardH = (this.shield || this.timeZone) ? 180 : 130;
     const cardX = (cw - cardW) / 2;
     const cardY = (ch - cardH) / 2;
     ctx.fillStyle = "#0f0f0f";
@@ -2151,6 +2929,16 @@ class Game {
       ctx.font = "10px 'Press Start 2P', monospace";
       ctx.fillText("Tarik jari/mouse = perisai", cw / 2, cardY + 154);
     }
+    // Time zone mode (L18): tap placement instruction
+    if (this.timeZone) {
+      ctx.fillStyle = "#0288d1";
+      ctx.fillRect(cardX + 12, cardY + 120, cardW - 24, 48);
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 11px 'Press Start 2P', monospace";
+      ctx.fillText("MODE ZONA WAKTU", cw / 2, cardY + 135);
+      ctx.font = "10px 'Press Start 2P', monospace";
+      ctx.fillText("TAP layar = letakkan zona", cw / 2, cardY + 154);
+    }
 
     ctx.restore();
   }
@@ -2167,19 +2955,36 @@ class Game {
       }
     }
 
-    // Awan drift lambat
+    // Awan drift lambat. Hanya awan dengan flag admin:true yang di-register
+    // sebagai hit target (akses admin via click awan terbesar di tengah).
     const clouds = [
       { x: 120,  y: 70,  s: 30 },
       { x: 380,  y: 110, s: 24 },
-      { x: 640,  y: 50,  s: 36 },
+      { x: 640,  y: 50,  s: 36, admin: true },   // TERBESAR — admin access
       { x: 900,  y: 95,  s: 27 },
       { x: 1100, y: 65,  s: 21 },
     ];
     const drift = (this.timeMs * 0.012) % 1400;
+    this.cloudHitboxes = [];
     for (const c of clouds) {
       const x = ((c.x + drift + 200) % 1400) - 200;
       this.drawCloud(x, c.y, c.s);
+      if (c.admin) {
+        // Hitbox cover keseluruhan cluster 3-circle (~size*1.8 horizontal)
+        this.cloudHitboxes.push({ cx: x, cy: c.y, r: c.s * 1.8 });
+      }
     }
+  }
+
+  // Public: apakah titik (x, y) kena salah satu awan drifting? Dipakai
+  // main.js untuk easter-egg admin access (click awan di home).
+  hitCloud(x, y) {
+    if (!this.cloudHitboxes) return false;
+    for (const h of this.cloudHitboxes) {
+      const dx = x - h.cx, dy = y - h.cy;
+      if (dx*dx + dy*dy <= h.r * h.r) return true;
+    }
+    return false;
   }
 
   drawCloud(cx, cy, size) {
@@ -2843,6 +3648,11 @@ class Game {
     const { ctx } = this;
     if (e.state === STATE.BROKEN) return; // particles take over
 
+    // L19 invisibility: skip render kalau level.invisibleEgg DAN telur tidak
+    // di air. Di air → tetap render (water acts as reveal). Pemain navigasi
+    // via dust particles + splash.
+    if (this.level && this.level.invisibleEgg && !e.inWater) return;
+
     // Bayangan di tanah
     if (e.onGround && !e.inWater) {
       pxRect(ctx, e.x + 3, e.y + e.h + PX, e.w - 6, PX, "rgba(0,0,0,0.2)");
@@ -2928,9 +3738,12 @@ class Game {
     this.drawSky();
     this.drawGround({ x: 0, y: 490, w: canvas.width, h: 70 });
 
-    // Decorative egg besar yang bob
-    const bigBob = Math.round(Math.sin(this.timeMs * 0.003) * 2) * PX;
-    this.drawBigEgg(canvas.width / 2, 270 + bigBob);
+    // Decorative egg besar yang bob — disembunyikan di coming-soon view supaya
+    // tulisan COMING SOON besar dapat fokus visual.
+    if (this.homeView !== "comingSoon") {
+      const bigBob = Math.round(Math.sin(this.timeMs * 0.003) * 2) * PX;
+      this.drawBigEgg(canvas.width / 2, 270 + bigBob);
+    }
 
     // Title: MR. EGG (pixel-style font big)
     ctx.fillStyle = C.K;
@@ -2965,32 +3778,106 @@ class Game {
       const count = playedMax + 1;
       const lvlSize = 56;
       const gap = 12;
-      const totalW = count * lvlSize + (count - 1) * gap;
-      const startX = (canvas.width - totalW) / 2;
-      const startY = 380;
+      // Auto-wrap: hitung max cols yang fit di canvas width dengan padding.
+      // Total row width = cols*lvlSize + (cols-1)*gap ≤ maxAvailableW.
+      const padX = 40;  // margin kiri-kanan
+      const maxAvailableW = canvas.width - padX * 2;
+      const maxCols = Math.max(1, Math.floor((maxAvailableW + gap) / (lvlSize + gap)));
+      const rows = Math.ceil(count / maxCols);
+      // Distribute evenly antar rows — 19 → 10+9, bukan 17+2
+      const colsPerRow = Math.ceil(count / rows);
+      // Start Y: kalau 1 row tetap di 380. Kalau 2+ rows, mundur sedikit supaya
+      // grid tetap center-ish antara title dan back button.
+      const startY = rows > 1 ? 340 : 380;
       for (let i = 0; i <= playedMax; i++) {
+        const row = Math.floor(i / colsPerRow);
+        const col = i % colsPerRow;
+        // Per-row count untuk center horizontal (row terakhir bisa lebih sedikit)
+        const rowStart = row * colsPerRow;
+        const rowEnd = Math.min(rowStart + colsPerRow - 1, playedMax);
+        const rowCount = rowEnd - rowStart + 1;
+        const rowW = rowCount * lvlSize + (rowCount - 1) * gap;
+        const rowStartX = (canvas.width - rowW) / 2;
+        const lvl = LEVELS[i];
         this.homeBtns.push({
-          x: startX + i * (lvlSize + gap), y: startY,
+          x: rowStartX + col * (lvlSize + gap),
+          y: startY + row * (lvlSize + gap),
           w: lvlSize, h: lvlSize,
           label: String(i + 1),
-          handler: () => this.loadLevel(LEVELS[i]),
-          small: true
+          // Coming soon level: switch ke special view, bukan loadLevel.
+          // Level biasa: dispatch selectLevel event supaya main.js bisa
+          // inject ad gating (check lastPlayedLevel + lives).
+          handler: lvl.comingSoon
+            ? () => { this.homeView = "comingSoon"; this.comingSoonLevel = lvl; }
+            : ((idx) => () => {
+                if (this.onEvent) this.onEvent({ type: "selectLevel", index: idx });
+              })(i),
+          small: true,
+          dimmed: !!lvl.comingSoon
         });
       }
-      // Back button
+      // Back button — posisi relative ke grid bottom
+      const gridBottom = startY + rows * (lvlSize + gap) - gap;
       const backW = 160, backH = 36;
       this.homeBtns.push({
-        x: (canvas.width - backW) / 2, y: 452,
+        x: (canvas.width - backW) / 2, y: gridBottom + 12,
         w: backW, h: backH,
         label: "BACK",
         handler: () => { this.homeView = "menu"; this.homeSelected = 0; },
         small: true
       });
-      // Helper text
+      // Helper text di atas grid
       ctx.fillStyle = C.D;
       ctx.font = "bold 12px 'Press Start 2P', monospace";
       ctx.textAlign = "center";
-      ctx.fillText("PILIH LEVEL", canvas.width/2, 360);
+      ctx.fillText("PILIH LEVEL", canvas.width/2, startY - 20);
+    } else if (this.homeView === "comingSoon") {
+      // COMING SOON view (Level 20): tulisan BESAR di tengah screen + clear
+      // donate CTA. Dispatch event ke main.js untuk open PayPal.
+      const lvl = this.comingSoonLevel || {};
+      const cx = canvas.width / 2;
+
+      // "COMING SOON" — MEGA title dengan shadow effect untuk prominence
+      ctx.font = "bold 80px 'Press Start 2P', monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "alphabetic";
+      // Shadow
+      ctx.fillStyle = C.L;
+      ctx.fillText("COMING", cx + 8, 230 + 8);
+      ctx.fillText("SOON",   cx + 8, 310 + 8);
+      // Main text (tebal hitam)
+      ctx.fillStyle = C.K;
+      ctx.fillText("COMING", cx, 230);
+      ctx.fillText("SOON",   cx, 310);
+
+      // "Please Donate to PayPal" — subtitle menonjol
+      ctx.font = "bold 22px 'Press Start 2P', monospace";
+      ctx.fillStyle = "#0070ba";   // PayPal blue
+      ctx.fillText("Please Donate to PayPal", cx, 370);
+
+      // DONATE button — lebar hampir-full canvas supaya presence strong + CTA clear
+      const donW = 700, donH = 64;
+      this.homeBtns.push({
+        x: (canvas.width - donW) / 2, y: 400,
+        w: donW, h: donH,
+        label: "\u2764 DONATE via PayPal",
+        handler: () => {
+          if (this.onEvent) this.onEvent({
+            type: "donate",
+            email: lvl.donateEmail || "indra_james@yahoo.com",
+            item: "Mr. Egg Puzzle Donation"
+          });
+        }
+      });
+      // BACK — geser sedikit karena donate button sekarang lebih tinggi (64)
+      const backW = 140, backH = 32;
+      this.homeBtns.push({
+        x: (canvas.width - backW) / 2, y: 478,
+        w: backW, h: backH,
+        label: "BACK",
+        handler: () => { this.homeView = "select"; },
+        small: true
+      });
     } else {
       // MENU VIEW (default): cuma PLAY + GET APK
       const playLevelIdx = Math.min(LEVELS.length - 1, wonMax + 1);
@@ -3008,17 +3895,6 @@ class Game {
       ctx.textAlign = "center";
       ctx.fillText("PRESS SPACE OR CLICK TO START", canvas.width/2, 340);
     }
-
-    // GET APK button selalu ada (di-bawah), handler dari main.js callback
-    const apkW = 240, apkH = 36;
-    this.homeBtns.push({
-      x: (canvas.width - apkW) / 2, y: 510,
-      w: apkW, h: apkH,
-      label: "\u{1F4F1} GET APK",
-      handler: () => { if (this.onInstallApp) this.onInstallApp(); },
-      small: true,
-      isInstall: true
-    });
 
     // Render semua buttons
     const blink = Math.floor(this.timeMs / 400) % 2 === 0;
@@ -3133,6 +4009,28 @@ class Game {
   shieldAddPoint(x, y)    { if (this.shield) this.shield.addPoint(x, y); }
   shieldEndStroke()       { if (this.shield) this.shield.endStroke(); }
   shieldClear()           { if (this.shield) this.shield.clear(); }
+
+  // ----- Time zone (level 18) API untuk main.js -----
+  isTimeZoneMode() {
+    return !!(this.timeZone && this.paused && this.mode !== "home");
+  }
+  placeTimeZone(x, y) {
+    if (!this.timeZone) return;
+    this.timeZone.x = x;
+    this.timeZone.y = y;
+    this.timeZone.active = true;
+  }
+
+  // Helper: return dt-multiplier untuk entity di posisi (x,y). Kalau di
+  // dalam time zone → slowFactor (near-zero), kalau tidak → 1. Dipakai
+  // updateHotStones dan crumbling platform logic untuk skew fisika.
+  _timeDilation(x, y) {
+    const z = this.timeZone;
+    if (!z || !z.active) return 1;
+    const dx = x - z.x, dy = y - z.y;
+    if (dx*dx + dy*dy < z.radius * z.radius) return z.slowFactor;
+    return 1;
+  }
 
   // Pindahkan box/door ke posisi target dengan resolusi collision
   dragBoxTo(box, targetX, targetY) {
