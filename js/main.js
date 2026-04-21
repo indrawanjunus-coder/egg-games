@@ -1,7 +1,7 @@
 (() => {
   // App version — ditampilkan di home screen. Bump manual saat release
   // signifikan (level baru, fitur besar). Bukan cache version SW.
-  window.APP_VERSION = "1.1.0";
+  window.APP_VERSION = "2.0.0";
 
   const canvas = document.getElementById("game");
   const levelNum = document.getElementById("level-num");
@@ -47,6 +47,25 @@
     game.wonMax = wonMax;  // sync ke engine
   }
 
+  // lastPlayedLevel = "continuation state" untuk ad gating.
+  //   0 (default fresh): level 1 playable tanpa ad
+  //   N >= 0: index level yang lagi "in-progress" atau baru di-resume
+  //   -1: reset penalty (setelah decline ad di lives-out → home)
+  // Level click handler compare ke state ini. Kalau click === lastPlayed
+  // DAN lives > 0 → no ad. Else → ad required.
+  const LAST_LEVEL_KEY = "egg_last_level";
+  let lastPlayedLevel = 0;
+  {
+    const stored = localStorage.getItem(LAST_LEVEL_KEY);
+    if (stored !== null) {
+      const n = parseInt(stored, 10);
+      if (!isNaN(n)) lastPlayedLevel = n;
+    }
+  }
+  function saveLastPlayed() {
+    localStorage.setItem(LAST_LEVEL_KEY, String(lastPlayedLevel));
+  }
+
   function saveLives() { localStorage.setItem(LIVES_KEY, String(lives)); }
   function renderHearts() {
     for (let i = 1; i <= MAX_LIVES; i++) {
@@ -74,19 +93,78 @@
       return;
     }
     current = Math.max(0, Math.min(LEVELS.length - 1, i));
+    lastPlayedLevel = current;
+    saveLastPlayed();
     levelNum.textContent = current + 1;
     game.loadLevel(LEVELS[current]);
     hideOverlay();
   }
 
+  // goHome: kalau lives habis (pemain decline ad di overlay) → reset lastPlayed
+  // ke -1 supaya semua level select selanjutnya butuh ad. Kalau lives masih
+  // ada (pemain mid-game press Home), lastPlayed tetap = current level.
+  // Juga reset testMode — kembali ke flow normal saat player ke home.
   function goHome() {
+    if (lives <= 0) {
+      lastPlayedLevel = -1;
+      saveLastPlayed();
+    }
+    testModeActive = false;
+    game.testMode = false;
     game.goHome();
     hideOverlay();
+  }
+
+  // Level select handler dengan ad gating. Dipanggil dari:
+  //   - engine.js home button onEvent({type:"selectLevel", index})
+  //   - keyboard numeric shortcut
+  // Rule: kalau idx === lastPlayedLevel DAN lives > 0 → direct play.
+  // Else → watch interstitial ad. Kalau ad completes (atau ads disabled
+  // fallback), restore lives kalau 0, lalu startLevel.
+  async function selectLevelWithAd(idx) {
+    const isDirectContinue = (idx === lastPlayedLevel && lives > 0);
+    if (isDirectContinue) {
+      startLevel(idx);
+      return;
+    }
+    try {
+      await withGamePaused(() => showInterstitialWithBypass());
+    } catch (e) {
+      console.warn("[main] Level select ad gate failed, proceeding anyway", e);
+      // Defensive: jangan block pemain karena ad error
+    }
+    // Restore lives kalau habis (pemain sudah "bayar" via ad)
+    if (lives <= 0) {
+      lives = MAX_LIVES;
+      saveLives();
+      renderHearts();
+    }
+    lastPlayedLevel = idx;
+    saveLastPlayed();
+    startLevel(idx);
   }
 
   function handleEvent(ev) {
     if (ev.type === "mode") {
       applyModeUI(ev.mode);
+      return;
+    }
+    if (ev.type === "selectLevel") {
+      selectLevelWithAd(ev.index);
+      return;
+    }
+    if (ev.type === "donate") {
+      // Redirect ke PayPal donate form dengan pre-filled email & item name.
+      // window.open untuk pop-up di browser, di Capacitor APK akan open via
+      // system browser (bukan in-WebView) — user friendly buat sandbox kredit.
+      const email = ev.email || "indra_james@yahoo.com";
+      const item = ev.item || "Mr. Egg Puzzle Donation";
+      const url = "https://www.paypal.com/donate/" +
+        "?business=" + encodeURIComponent(email) +
+        "&item_name=" + encodeURIComponent(item) +
+        "&currency_code=USD";
+      console.log("[main] Open PayPal:", url);
+      window.open(url, "_blank");
       return;
     }
     if (ev.type === "won") {
@@ -101,6 +179,9 @@
         wonMax = current;
         saveWonMax();
       }
+      // Advance continuation — next natural play = current+1, no ad
+      lastPlayedLevel = Math.min(LEVELS.length - 1, current + 1);
+      saveLastPlayed();
       showOverlay("LOLOS!", "Telur berhasil kabur lewat pintu.", true);
     } else if (ev.type === "broken" || ev.type === "lost") {
       lives = Math.max(0, lives - 1);
@@ -184,10 +265,10 @@
         if (btn && !btn.locked && btn.handler) btn.handler();
       } else if (e.key >= "1" && e.key <= "9") {
         // Numeric shortcut: hanya di select view dan level yang sudah pernah
-        // dimainkan (playedMax = wonMax+1).
+        // dimainkan (playedMax = wonMax+1). Pakai ad gating seperti click.
         const idx = parseInt(e.key) - 1;
         const playedMax = Math.min(LEVELS.length - 1, wonMax + 1);
-        if (game.homeView === "select" && idx <= playedMax) startLevel(idx);
+        if (game.homeView === "select" && idx <= playedMax) selectLevelWithAd(idx);
       }
       return;
     }
@@ -247,7 +328,7 @@
     btnExtend.disabled = true;
     btnRestartAd.disabled = true;
     try {
-      const result = await withGamePaused(() => window.EggAds.showRewardedAd());
+      const result = await withGamePaused(() => showRewardedWithBypass());
       if (result.completed) {
         lives = Math.min(MAX_LIVES, lives + 1);
         saveLives();
@@ -267,7 +348,7 @@
     btnExtend.disabled = true;
     btnRestartAd.disabled = true;
     try {
-      await withGamePaused(() => window.EggAds.showInterstitialAd());
+      await withGamePaused(() => showInterstitialWithBypass());
       // Reset nyawa & restart level regardless of ad result (user sudah opt-in)
       lives = MAX_LIVES;
       saveLives();
@@ -280,6 +361,38 @@
   });
   btnPause.addEventListener("click", togglePause);
   btnHome.addEventListener("click", goHome);
+
+  // Admin test mode: dipanggil dari admin panel "Test Levels" button grid.
+  // testModeActive flag reset ke false saat player goHome (normal flow resume).
+  // Selama aktif, semua ad calls di-bypass (kembalikan completed:true tanpa
+  // panggil SDK / simulator).
+  let testModeActive = false;
+  window.launchTestLevel = function(idx) {
+    testModeActive = true;
+    game.testMode = true;  // expose ke engine kalau nanti perlu
+    lives = MAX_LIVES;
+    saveLives();
+    renderHearts();
+    // Unlock progression sampai idx supaya level select pasca-test tidak
+    // terkunci (QA convenience). wonMax tidak di-downgrade kalau sudah lebih.
+    if (wonMax < idx - 1) {
+      wonMax = Math.max(0, idx - 1);
+      saveWonMax();
+    }
+    startLevel(idx);
+  };
+
+  // Gated ad helpers — single point untuk inject testMode bypass. Dipakai
+  // di semua tempat yang mau show ad (extend life, restart ad, hint, level
+  // select). Bypass lebih cepat (no network call, no ad) — cocok untuk QA.
+  async function showRewardedWithBypass() {
+    if (testModeActive) return { completed: true, reason: "test-mode-bypass" };
+    return await window.EggAds.showRewardedAd();
+  }
+  async function showInterstitialWithBypass() {
+    if (testModeActive) return { completed: true, reason: "test-mode-bypass" };
+    return await window.EggAds.showInterstitialAd();
+  }
   const btnOverlayHome = document.getElementById("btn-ovhome");
   if (btnOverlayHome) btnOverlayHome.addEventListener("click", goHome);
   btnMute.addEventListener("click", () => {
@@ -293,7 +406,7 @@
       if (game.mode === "home") return;
       btnHint.disabled = true;
       try {
-        const r = await withGamePaused(() => window.EggAds.showRewardedAd());
+        const r = await withGamePaused(() => showRewardedWithBypass());
         if (r.completed) game.showHint(6000);
       } finally { btnHint.disabled = false; }
     });
@@ -330,9 +443,31 @@
   canvas.addEventListener("pointerdown", (e) => {
     const p = canvasPoint(e);
     if (game.mode === "home") {
+      // Easter egg: click awan drifting → trigger admin login (btn-admin
+      // hidden di DOM tapi handler existing tetap dipakai).
+      if (game.hitCloud && game.hitCloud(p.x, p.y)) {
+        const btnAdm = document.getElementById("btn-admin");
+        if (btnAdm) btnAdm.click();
+        e.preventDefault();
+        return;
+      }
       const btn = game.hitHomeButton(p.x, p.y);
       if (btn) btn.handler();
       return;
+    }
+    // Level 17 mic init: pendingSoundStart di-set saat loadLevel.
+    // Start butuh user gesture, ini tempatnya. Kalau mic denied → fallback:
+    // touch-hold = simulate sound level 0.5.
+    if (game.pendingSoundStart && game.soundInput) {
+      game.pendingSoundStart = false;
+      game.soundInput.start().then((ok) => {
+        if (!ok) console.warn("[main] Mic denied — fallback ke touch-hold");
+      });
+    }
+    // Fallback sound input: kalau mic tidak aktif DAN level sound-reactive,
+    // pointer hold di canvas = level 0.5 (platform muncul), release = 0.
+    if (game.soundInput && !game.soundInput.isAvailable()) {
+      game.soundInput.setFallbackLevel(0.5);
     }
     // Shield drawing mode (level 13 paused) — pointer events untuk gambar.
     // Cek DULU sebelum balloon/box supaya drawing tidak conflict dengan drag.
@@ -341,6 +476,12 @@
         drawingShield = true;
         canvas.setPointerCapture(e.pointerId);
       }
+      e.preventDefault();
+      return;
+    }
+    // Time zone mode (L18 paused) — tap-to-place
+    if (game.isTimeZoneMode()) {
+      game.placeTimeZone(p.x, p.y);
       e.preventDefault();
       return;
     }
@@ -385,6 +526,10 @@
       dragBox.dragging = false;
       dragBox.beingDragged = false;
       dragBox = null;
+    }
+    // Release sound fallback saat pointerup (touch-hold mechanic)
+    if (game.soundInput && !game.soundInput.isAvailable()) {
+      game.soundInput.setFallbackLevel(0);
     }
   }
   canvas.addEventListener("pointerup", endDrag);
