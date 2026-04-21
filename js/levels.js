@@ -14,8 +14,8 @@ const LEVELS = [
   // CATATAN: ground dinaikkan ~30px (y 450→420) supaya area aktif telur tidak
   // tertutup tombol kontrol. Door, start position ikut shift -30.
   {
-    title: "Level 1 - Jalan Pagi",
-    hint: "Geser ke kanan untuk keluar.",
+    title: "Level 1 - Morning Walk",
+    hint: "Move right to reach the exit.",
     bounds: { x: 40, y: 40, w: 1120, h: 440 },
     start: { x: 120, y: 390 },
     doorIn:  { x: 70,   y: 350, w: 48, h: 70 },
@@ -30,8 +30,8 @@ const LEVELS = [
 
   // ---------- LEVEL 2: pohon yang bisa tumbang ----------
   {
-    title: "Level 2 - Awas Pohon!",
-    hint: "Jangan sampai tertimpa pohon.",
+    title: "Level 2 - Watch the Trees!",
+    hint: "Don't get crushed by falling trees.",
     bounds: { x: 40, y: 40, w: 1120, h: 440 },
     start: { x: 120, y: 390 },
     doorIn:  { x: 70,   y: 350, w: 48, h: 70 },
@@ -55,8 +55,8 @@ const LEVELS = [
 
   // ---------- LEVEL 3: daratan - laut - daratan ----------
   {
-    title: "Level 3 - Menyeberang Lautan",
-    hint: "Jalan ke air untuk mengambang, lalu loncat ke tangga.",
+    title: "Level 3 - Cross the Sea",
+    hint: "Walk into water to float, then jump onto the steps.",
     bounds: { x: 40, y: 40, w: 1120, h: 440 },
     start: { x: 110, y: 328 },
     doorIn:  { x: 70,   y: 290, w: 48, h: 70 },
@@ -80,8 +80,8 @@ const LEVELS = [
   // -> tekanan naik. Paku yang jatuh ke tanah tinggal beberapa detik lalu
   // hilang (supaya lintasan tetap bisa dilalui).
   {
-    title: "Level 4 - Hujan Paku",
-    hint: "Awas paku jatuh! Pantau segitiga kuning.",
+    title: "Level 4 - Rain of Spikes",
+    hint: "Watch out for falling spikes! Track the yellow triangles.",
     bounds: { x: 40, y: 40, w: 1120, h: 440 },
     start: { x: 100, y: 390 },
     doorIn:  { x: 70,   y: 350, w: 48, h: 70 },
@@ -109,8 +109,8 @@ const LEVELS = [
   // Pemain harus pakai semua skill yang dipelajari di level sebelumnya.
   // Layout: tanah kiri (pohon) -> air -> mid island -> air -> tanah kanan (spike rain)
   {
-    title: "Level 5 - Ujian Akhir",
-    hint: "Pohon, air, paku - semua sekaligus!",
+    title: "Level 5 - Final Test",
+    hint: "Trees, water, spikes - all at once!",
     bounds: { x: 40, y: 40, w: 1120, h: 440 },
     start: { x: 110, y: 388 },
     doorIn:  { x: 70,   y: 350, w: 48, h: 70 },
@@ -160,8 +160,8 @@ const LEVELS = [
   // 4. Dorong KOTAK2 ke kiri tier 3 (yang lebih tinggi)
   // 5. Naik kotak2, loncat ke tier 3 (atap y=320), masuk pintu keluar
   {
-    title: "Level 6 - Naik Tangga",
-    hint: "Dorong kotak buat tangga ke pintu di atas!",
+    title: "Level 6 - Climb the Stairs",
+    hint: "Push the boxes to build stairs to the top door!",
     bounds: { x: 40, y: 40, w: 1120, h: 440 },
     start: { x: 110, y: 385 },
     doorIn:  { x: 70,   y: 350, w: 48, h: 70 },
@@ -186,8 +186,8 @@ const LEVELS = [
   // Pemain harus loncat platform-ke-jembatan dengan timing tepat saat angin
   // menggeser ke posisi yang dijangkau.
   {
-    title: "Level 7 - Jembatan Angin",
-    hint: "Loncat ke jembatan saat angin geser cocok!",
+    title: "Level 7 - Wind Bridge",
+    hint: "Jump onto the bridge when the wind shift is right!",
     bounds: { x: 40, y: 40, w: 1120, h: 440 },
     start: { x: 80, y: 158 },
     doorIn:  { x: 60,   y: 120, w: 48, h: 70 },
@@ -214,8 +214,8 @@ const LEVELS = [
   // Garpu hilang di atas layar lalu balik turun di posisi acak.
   // Telur harus loncat platform-ke-platform sambil menghindari garpu jatuh.
   {
-    title: "Level 8 - Suku Kanibal",
-    hint: "Awas garpu jatuh dari atas! Loncat platform.",
+    title: "Level 8 - Cannibal Tribe",
+    hint: "Beware of falling forks! Jump across the platforms.",
     bounds: { x: 40, y: 40, w: 1120, h: 440 },
     start: { x: 90, y: 226 },               // egg.h=33, platform.y=260 -> egg.y=227
     doorIn:  { x: 60,   y: 190, w: 48, h: 70 },
@@ -258,8 +258,8 @@ const LEVELS = [
   // Cara menang: drag pintu pakai touch/mouse ke posisi telur supaya overlap.
   // Spot teleport ada di area unreachable supaya pemain harus pakai drag.
   {
-    title: "Level 9 - Pintu Gunung",
-    hint: "Pintu kabur saat dekat! DRAG ke telur untuk menang.",
+    title: "Level 9 - Mountain Door",
+    hint: "The door runs when you're close! DRAG it onto the egg to win.",
     bounds: { x: 40, y: 40, w: 1120, h: 440 },
     start: { x: 80, y: 437 },
     doorIn:  { x: 60, y: 400, w: 48, h: 70 },
@@ -303,8 +303,8 @@ const LEVELS = [
   //   - Telur di dalam pipa AMAN dari kedua bahaya
   // Player harus time pergerakan: hide → run → hide.
   {
-    title: "Level 10 - Pipa Persembunyian",
-    hint: "Sembunyi di pipa dari kaki & batu jatuh!",
+    title: "Level 10 - Hiding Pipe",
+    hint: "Hide inside the pipe from the stomping foot and falling stones!",
     bounds: { x: 40, y: 40, w: 1120, h: 440 },
     start: { x: 90, y: 375 },
     doorIn:  { x: 60,   y: 350, w: 48, h: 70 },
@@ -358,8 +358,8 @@ const LEVELS = [
   //   0 balon  -> free fall
   // Strategi: pop 1-2 balon untuk stabilkan rod jadi pijakan, jump ke kanan.
   {
-    title: "Level 11 - Balon Kayu",
-    hint: "Klik balon untuk pop. Pijak batang ke seberang!",
+    title: "Level 11 - Wooden Balloon",
+    hint: "Click balloons to pop them. Step on the rod to cross!",
     bounds: { x: 40, y: 40, w: 1120, h: 440 },
     start: { x: 80, y: 247 },                   // egg di tanah kiri (y+h=280)
     doorIn:  { x: 60,   y: 210, w: 48, h: 70 },
@@ -395,8 +395,8 @@ const LEVELS = [
   // supaya pemain aman saat berdiri di atasnya. Background: gunung berapi samar
   // menyemburkan batu panas (random landing, juga bisa ke area pasir).
   {
-    title: "Level 12 - Pasir Hisap",
-    hint: "Loncat dari batu ke batu! Pasir menyedot terus, jangan lama-lama.",
+    title: "Level 12 - Quicksand",
+    hint: "Jump stone to stone! The sand sucks you down—don't linger.",
     bounds: { x: 40, y: 40, w: 1120, h: 440 },
     start: { x: 80, y: 247 },
     doorIn:  { x: 60,   y: 210, w: 48, h: 70 },
@@ -446,8 +446,8 @@ const LEVELS = [
   // Mekanik baru: spawner "nail-rain" — dense + no warning + random full-width.
   // Pemain menang dengan navigasi strategis + gambar shield strategis.
   {
-    title: "Level 13 - Gambar Perisai",
-    hint: "PAUSE, gambar garis perisai dari hujan paku, lalu lanjut!",
+    title: "Level 13 - Draw the Shield",
+    hint: "PAUSE, draw a shield line against the nail rain, then continue!",
     bounds: { x: 40, y: 40, w: 1120, h: 440 },
     start: { x: 100, y: 388 },
     doorIn:  { x: 70,   y: 350, w: 48, h: 70 },
@@ -482,8 +482,8 @@ const LEVELS = [
   //
   // Bedanya dengan Level 13: tidak ada projectile, tapi AI mengejar aktif.
   {
-    title: "Level 14 - Lari dari Kanibal",
-    hint: "PAUSE! Gambar tembok vertikal untuk block kanibal!",
+    title: "Level 14 - Run from Cannibals",
+    hint: "PAUSE! Draw vertical walls to block the cannibals!",
     bounds: { x: 40, y: 40, w: 1120, h: 440 },
     start: { x: 130, y: 388 },
     doorIn:  { x: 70,   y: 350, w: 48, h: 70 },
@@ -521,8 +521,8 @@ const LEVELS = [
   // "Awal yang menipu" karena terlihat trivial tapi butuh mekanik baru.
   // Secara flow game: tutorial untuk mekanik yang muncul di L13/L14.
   {
-    title: "Level 15 - Awal yang Menipu",
-    hint: "Lubang terlalu lebar! PAUSE + gambar jembatan untuk menyeberang",
+    title: "Level 15 - Deceptive Start",
+    hint: "The pit is too wide! PAUSE + draw a bridge to cross.",
     bounds: { x: 40, y: 40, w: 1120, h: 440 },
     start: { x: 130, y: 388 },
     doorIn:  { x: 70,   y: 350, w: 48, h: 70 },
@@ -560,7 +560,7 @@ const LEVELS = [
   // stones. Keduanya viable.
   {
     title: "Level 16 - Double Path Reality",
-    hint: "2 jalur: atas hujan batu, bawah kanibal. PAUSE + gambar untuk pindah jalur.",
+    hint: "Two lanes: stones up top, cannibals below. PAUSE + draw to switch lanes.",
     bounds: { x: 40, y: 40, w: 1120, h: 440 },
     start: { x: 130, y: 388 },
     doorIn:  { x: 70,   y: 350, w: 48, h: 70 },
@@ -623,8 +623,8 @@ const LEVELS = [
   //
   // Fallback: kalau mic denied, hold TAP di canvas = simulate sound input.
   {
-    title: "Level 17 - Suara Mengubah Dunia",
-    hint: "Bunyi/tepuk bikin platform muncul. Terlalu berisik = hujan paku!",
+    title: "Level 17 - Sound Shapes the World",
+    hint: "Make noise / clap to reveal platforms. Too loud = nail rain!",
     bounds: { x: 40, y: 40, w: 1120, h: 440 },
     start: { x: 100, y: 388 },
     doorIn:  { x: 70,   y: 350, w: 48, h: 70 },
@@ -683,8 +683,8 @@ const LEVELS = [
   //
   // Core: satu zone aktif, fixed radius. Pemain reposisi via tap baru.
   {
-    title: "Level 18 - Waktu Bisa Disedot",
-    hint: "PAUSE + tap layar → tempatkan zona waktu. Batu beku di dalamnya.",
+    title: "Level 18 - Time Can Be Stolen",
+    hint: "PAUSE + tap screen → place the time zone. Stones freeze inside it.",
     bounds: { x: 40, y: 40, w: 1120, h: 440 },
     start: { x: 100, y: 388 },
     doorIn:  { x: 70,   y: 350, w: 48, h: 70 },
@@ -736,8 +736,8 @@ const LEVELS = [
   // Tanpa reveals → player stuck (diam = zero feedback). Player harus gerak
   // konsisten untuk "merasakan" posisi telur.
   {
-    title: "Level 19 - Telur Tak Terlihat",
-    hint: "Telur INVISIBLE. Bergerak untuk lihat debu, lewati air untuk splash.",
+    title: "Level 19 - The Invisible Egg",
+    hint: "The egg is INVISIBLE. Move to see dust, enter water for a splash reveal.",
     bounds: { x: 40, y: 40, w: 1120, h: 440 },
     start: { x: 100, y: 388 },
     doorIn:  { x: 70,   y: 350, w: 48, h: 70 },
@@ -787,8 +787,8 @@ const LEVELS = [
   //
   // HP 3. Kalau habis, hand disabled, egg bisa masuk doorOut untuk win.
   {
-    title: "Level 20 - Tangan Raksasa",
-    hint: "Pancing ke kanan, lari ke catapult kiri. Rock landing ~x=890!",
+    title: "Level 20 - Giant Hand",
+    hint: "Lure the hand right, sprint to the catapult on the left. Rock lands ~x=890!",
     bounds: { x: 40, y: 40, w: 1120, h: 440 },
     start: { x: 200, y: 388 },
     doorIn:  { x: 70,   y: 350, w: 48, h: 70 },
@@ -846,8 +846,8 @@ const LEVELS = [
   // Simplifikasi dari spec: NPC follower di-replace sprite static di F1.
   // Stairs = platform gap untuk jump (bukan ramp miring).
   {
-    title: "Level 21 - Rumah Pegunungan",
-    hint: "Naik gunung, ketuk pintu rumah #3 (tengah) dua kali!",
+    title: "Level 21 - Mountain House",
+    hint: "Climb the mountain, knock on house #3 (middle) twice!",
     bounds: { x: 40, y: 40, w: 1120, h: 440 },
     // Top-level fields untuk loadLevel initial setup (mirror phase1).
     // Multi-phase engine akan overwrite via _applyPhaseData.
