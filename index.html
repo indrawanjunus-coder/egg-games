@@ -33,7 +33,7 @@
       <button id="btn-mute" class="icon-btn" aria-label="Mute">&#128266;</button>
       <button id="btn-fs" class="icon-btn" aria-label="Fullscreen">&#9974;</button>
       <button id="btn-hint" class="icon-btn" aria-label="Hint">&#63;</button>
-      <button id="btn-admin" class="icon-btn" aria-label="Admin">&#9881;</button>
+      <button id="btn-admin" class="icon-btn" aria-label="Admin" hidden style="display:none;">&#9881;</button>
       <div class="level-label">Level <span id="level-num">1</span></div>
       <div class="lives-display" id="lives-display" aria-label="Nyawa">
         <span class="heart" id="heart-1">&#9829;</span>
@@ -154,6 +154,12 @@
       </fieldset>
 
       <fieldset>
+        <legend>Test Levels (No Ads)</legend>
+        <p class="admin-hint">Akses langsung level untuk QA. AdMob bypass, lives restore ke MAX. Level grid auto-generated dari jumlah LEVELS.</p>
+        <div class="test-level-grid" id="adm-test-grid"></div>
+      </fieldset>
+
+      <fieldset>
         <legend>AdMob Log</legend>
         <p class="admin-hint">Log call AdMob - cek apakah native SDK terdeteksi, ad unit ID dipakai, success/error. Tab modal admin akan auto-refresh log saat dibuka.</p>
         <textarea id="adm-ads-log" readonly rows="12" style="width:100%; font-family:ui-monospace,monospace; font-size:9px; line-height:1.4; background:#0f0f0f; color:#c8c8c8; border:2px solid #0f0f0f; padding:6px; resize:vertical;"></textarea>
@@ -172,6 +178,7 @@
 
   <script src="js/levels.js"></script>
   <script src="js/shield-draw.js"></script>
+  <script src="js/sound-input.js"></script>
   <script src="js/engine.js"></script>
   <script src="js/admob-bridge.js"></script>
   <script src="js/ads.js"></script>
