@@ -8,8 +8,22 @@
 // ============================================================================
 (() => {
   const STORE_PWD_KEY = "egg_admin_pwd_hash";
+  const ADMIN_VERSION_KEY = "egg_admin_v";
+  const CURRENT_ADMIN_VERSION = 2;  // bump saat ganti DEFAULT_PWD
   const ADMIN_USER = "admin";
-  const DEFAULT_PWD = "admin123";
+  const DEFAULT_PWD = "Indrawan1484";
+
+  // Auto-migrate: existing users dengan hash dari DEFAULT_PWD lama (admin123)
+  // perlu di-reset supaya login pakai DEFAULT_PWD baru. Detect via version
+  // flag — kalau belum ada atau < current, wipe stored hash.
+  {
+    const v = parseInt(localStorage.getItem(ADMIN_VERSION_KEY) || "0", 10);
+    if (isNaN(v) || v < CURRENT_ADMIN_VERSION) {
+      localStorage.removeItem(STORE_PWD_KEY);
+      localStorage.setItem(ADMIN_VERSION_KEY, String(CURRENT_ADMIN_VERSION));
+      console.log("[Admin] Password reset to new default via version migration");
+    }
+  }
 
   // ---------- Hashing ----------
   // CATATAN: kita TIDAK pakai Web Crypto SHA-256 karena `crypto.subtle` butuh
@@ -106,6 +120,7 @@
     "capacitor.config.json",
     "js/levels.js",
     "js/shield-draw.js",
+    "js/sound-input.js",
     "js/engine.js",
     "js/admob-bridge.js",
     "js/ads.js",
@@ -266,10 +281,37 @@
     if (info) info.textContent = `${entries.length} entries`;
   }
 
+  // Generate test-level button grid sekali saat modal pertama di-populate.
+  // Click handler call window.launchTestLevel() — set testModeActive +
+  // startLevel + bypass ads.
+  let testGridPopulated = false;
+  function populateTestGrid() {
+    if (testGridPopulated) return;
+    const grid = document.getElementById("adm-test-grid");
+    // LEVELS global const dari levels.js (top-level script scope).
+    // Top-level const TIDAK auto di-assign ke window — akses direct.
+    if (!grid || typeof LEVELS === "undefined") return;
+    while (grid.firstChild) grid.removeChild(grid.firstChild);
+    for (let i = 0; i < LEVELS.length; i++) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "test-lvl-btn";
+      btn.textContent = String(i + 1);
+      btn.title = (LEVELS[i] && LEVELS[i].title) || ("Level " + (i+1));
+      btn.addEventListener("click", () => {
+        hide(settingsModal);
+        if (window.launchTestLevel) window.launchTestLevel(i);
+      });
+      grid.appendChild(btn);
+    }
+    testGridPopulated = true;
+  }
+
   // Helper: show settings modal + refresh form values + log
   function openSettings() {
     populateAdmobForm();
     refreshAdsLog();
+    populateTestGrid();
     show(settingsModal);
   }
 
