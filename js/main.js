@@ -1,7 +1,7 @@
 (() => {
   // App version — ditampilkan di home screen. Bump manual saat release
   // signifikan (level baru, fitur besar). Bukan cache version SW.
-  window.APP_VERSION = "2.0.0";
+  window.APP_VERSION = "2.1.0";
 
   const canvas = document.getElementById("game");
   const levelNum = document.getElementById("level-num");
@@ -151,6 +151,20 @@
     }
     if (ev.type === "selectLevel") {
       selectLevelWithAd(ev.index);
+      return;
+    }
+    if (ev.type === "creditsDone") {
+      // L21 win → credits done → auto back to home. Set wonMax dulu supaya
+      // level 21 ter-record sebagai completed.
+      if (current > wonMax) {
+        wonMax = current;
+        saveWonMax();
+      }
+      // Restore lives (reward final level)
+      lives = MAX_LIVES;
+      saveLives();
+      renderHearts();
+      goHome();
       return;
     }
     if (ev.type === "donate") {
@@ -468,6 +482,20 @@
     // pointer hold di canvas = level 0.5 (platform muncul), release = 0.
     if (game.soundInput && !game.soundInput.isAvailable()) {
       game.soundInput.setFallbackLevel(0.5);
+    }
+    // L21 Phase 1: tap pintu rumah → knock
+    if (game.hitHouseDoor) {
+      const house = game.hitHouseDoor(p.x, p.y);
+      if (house) {
+        game.knockHouse(house);
+        e.preventDefault();
+        return;
+      }
+    }
+    // L21 Phase 2: tap tombol lantai
+    if (game.pressRoomButton && game.pressRoomButton(p.x, p.y)) {
+      e.preventDefault();
+      return;
     }
     // Shield drawing mode (level 13 paused) — pointer events untuk gambar.
     // Cek DULU sebelum balloon/box supaya drawing tidak conflict dengan drag.
