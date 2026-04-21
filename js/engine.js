@@ -768,7 +768,7 @@ class Game {
           this.shake = 14;
           this.sound.crack();
           this.emitShellBurst();
-          this.onEvent({ type: "broken", reason: "jatuh dari tinggi" });
+          this.onEvent({ type: "broken", reason: "fell from too high" });
         } else if (prevVy > 3) {
           this.sound.land();
           this.particles.emit(4, egg.x + egg.w/2, egg.y + egg.h,
@@ -799,7 +799,7 @@ class Game {
       if (egg.y > b.y + b.h + 60) {
         egg.state = STATE.LOST;
         this.sound.splash();
-        this.onEvent({ type: "lost", reason: "jatuh ke lubang" });
+        this.onEvent({ type: "lost", reason: "fell into pit" });
         return;
       }
       if (rectsOverlap(egg.rect(), this.level.doorOut)) {
@@ -1123,7 +1123,7 @@ class Game {
             egg.state = STATE.LOST;
             this.sound.splash();
             this.emitShellBurst();
-            this.onEvent({ type: "lost", reason: "tertelan pasir hisap" });
+            this.onEvent({ type: "lost", reason: "swallowed by quicksand" });
             return;
           }
         }
@@ -1156,7 +1156,7 @@ class Game {
             egg.state = STATE.LOST;
             this.sound.splash();
             this.emitShellBurst();
-            this.onEvent({ type: "lost", reason: "tenggelam ke dasar" });
+            this.onEvent({ type: "lost", reason: "sank to the bottom" });
             return;
           }
         }
@@ -1264,7 +1264,7 @@ class Game {
         this.egg.vx = 0; this.egg.vy = 0;
         this.sound.crack();
         this.emitShellBurst();
-        this.onEvent({ type:"broken", reason:"tertimpa pohon" });
+        this.onEvent({ type:"broken", reason:"crushed by tree" });
         return;
       }
     }
@@ -1337,7 +1337,7 @@ class Game {
         this.egg.state = STATE.BROKEN;
         this.sound.crack();
         this.emitShellBurst();
-        this.onEvent({ type:"broken", reason:"tertimpa paku" });
+        this.onEvent({ type:"broken", reason:"hit by spike" });
         return;
       }
     }
@@ -1733,7 +1733,7 @@ class Game {
           this.egg.vx = 0; this.egg.vy = 0;
           this.sound.crack();
           this.emitShellBurst();
-          this.onEvent({ type: "broken", reason: "tertimpa batu vulkanik" });
+          this.onEvent({ type: "broken", reason: "hit by volcanic rock" });
           this.stones.splice(i, 1);
         }
       }
@@ -1816,7 +1816,7 @@ class Game {
           this.egg.vx = 0; this.egg.vy = 0;
           this.sound.crack();
           this.emitShellBurst();
-          this.onEvent({ type: "broken", reason: "tertimpa hujan paku" });
+          this.onEvent({ type: "broken", reason: "hit by nail rain" });
           this.fallingNails.splice(i, 1);
         }
       }
@@ -1883,7 +1883,7 @@ class Game {
           this.egg.vx = 0; this.egg.vy = 0;
           this.sound.crack();
           this.emitShellBurst();
-          this.onEvent({ type: "broken", reason: "tertangkap kanibal" });
+          this.onEvent({ type: "broken", reason: "caught by cannibal" });
           return;
         }
       }
@@ -2090,7 +2090,7 @@ class Game {
         this.egg.vx = 0; this.egg.vy = 0;
         this.sound.crack();
         this.emitShellBurst();
-        this.onEvent({ type: "broken", reason: "tergilas tangan raksasa" });
+        this.onEvent({ type: "broken", reason: "crushed by giant hand" });
         return;
       }
     }
@@ -2493,7 +2493,7 @@ class Game {
           this.egg.vx = 0; this.egg.vy = 0;
           this.sound.crack();
           this.emitShellBurst();
-          this.onEvent({ type:"broken", reason:"tertimpa batu" });
+          this.onEvent({ type:"broken", reason:"hit by stone" });
           this.stones.splice(i, 1);
         }
       }
@@ -3088,7 +3088,7 @@ class Game {
     if (!this.soundInput.isAvailable()) {
       ctx.fillStyle = "#ff9800";
       ctx.textAlign = "center";
-      ctx.fillText("TAP layar → izin mic", cw/2, 20);
+      ctx.fillText("TAP to allow mic", cw/2, 20);
     }
     // Chaos warning banner
     const cs = this.chaosState;
@@ -3098,7 +3098,7 @@ class Game {
       ctx.fillStyle = "#fff";
       ctx.font = "bold 14px 'Press Start 2P', monospace";
       ctx.textAlign = "center";
-      ctx.fillText("⚠ HUJAN PAKU — JANGAN BERISIK!", cw/2, 62);
+      ctx.fillText("⚠ NAIL RAIN — STAY QUIET!", cw/2, 62);
     }
     ctx.restore();
   }
@@ -3154,7 +3154,7 @@ class Game {
     // Subtext kecil
     ctx.font = "14px 'Press Start 2P', monospace";
     ctx.fillStyle = "#c8c8c8";
-    ctx.fillText("Tekan \u25B6 untuk lanjut", cw / 2, cardY + 102);
+    ctx.fillText("Press \u25B6 to continue", cw / 2, cardY + 102);
 
     // Kalau level dengan shield drawing: instruksi ekstra
     if (this.shield) {
@@ -3162,9 +3162,9 @@ class Game {
       ctx.fillRect(cardX + 12, cardY + 120, cardW - 24, 48);
       ctx.fillStyle = "#fff";
       ctx.font = "bold 11px 'Press Start 2P', monospace";
-      ctx.fillText("MODE GAMBAR AKTIF", cw / 2, cardY + 135);
+      ctx.fillText("DRAW MODE ACTIVE", cw / 2, cardY + 135);
       ctx.font = "10px 'Press Start 2P', monospace";
-      ctx.fillText("Tarik jari/mouse = perisai", cw / 2, cardY + 154);
+      ctx.fillText("Drag finger/mouse = shield", cw / 2, cardY + 154);
     }
     // Time zone mode (L18): tap placement instruction
     if (this.timeZone) {
@@ -3172,9 +3172,9 @@ class Game {
       ctx.fillRect(cardX + 12, cardY + 120, cardW - 24, 48);
       ctx.fillStyle = "#fff";
       ctx.font = "bold 11px 'Press Start 2P', monospace";
-      ctx.fillText("MODE ZONA WAKTU", cw / 2, cardY + 135);
+      ctx.fillText("TIME ZONE MODE", cw / 2, cardY + 135);
       ctx.font = "10px 'Press Start 2P', monospace";
-      ctx.fillText("TAP layar = letakkan zona", cw / 2, cardY + 154);
+      ctx.fillText("TAP screen = place zone", cw / 2, cardY + 154);
     }
 
     ctx.restore();
@@ -4115,7 +4115,7 @@ class Game {
       ctx.fillStyle = C.D;
       ctx.font = "bold 12px 'Press Start 2P', monospace";
       ctx.textAlign = "center";
-      ctx.fillText("PILIH LEVEL", canvas.width/2, startY - 20);
+      ctx.fillText("SELECT LEVEL", canvas.width/2, startY - 20);
     } else if (this.homeView === "comingSoon") {
       // COMING SOON view (Level 20): tulisan BESAR di tengah screen + clear
       // donate CTA. Dispatch event ke main.js untuk open PayPal.
@@ -4170,7 +4170,7 @@ class Game {
       this.homeBtns.push({
         x: (canvas.width - playW) / 2, y: 380,
         w: playW, h: playH,
-        label: wonMax >= 0 ? `LANJUT Lv${playLevelIdx + 1}` : "PLAY",
+        label: wonMax >= 0 ? `CONTINUE Lv${playLevelIdx + 1}` : "PLAY",
         // Klik PLAY → switch ke select view (per user request)
         handler: () => { this.homeView = "select"; this.homeSelected = 0; }
       });
