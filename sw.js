@@ -1,5 +1,5 @@
 // Service Worker untuk offline caching - bisa main tanpa internet setelah install
-const CACHE_VERSION = "egg-v47";  // bump: admin test-level panel + ad bypass in test mode
+const CACHE_VERSION = "egg-v52";  // bump: L21 door pos fix + indoor background + draggable boxes
 const ASSETS = [
   "./",
   "./index.html",
