@@ -1,5 +1,5 @@
 // Service Worker untuk offline caching - bisa main tanpa internet setelah install
-const CACHE_VERSION = "egg-v52";  // bump: L21 door pos fix + indoor background + draggable boxes
+const CACHE_VERSION = "egg-v53";  // bump: all user-facing text translated to English
 const ASSETS = [
   "./",
   "./index.html",
