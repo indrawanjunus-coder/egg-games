@@ -1,5 +1,5 @@
 // Service Worker untuk offline caching - bisa main tanpa internet setelah install
-const CACHE_VERSION = "egg-v27";  // bump: shield as egg platform (L14 dual-use)
+const CACHE_VERSION = "egg-v47";  // bump: admin test-level panel + ad bypass in test mode
 const ASSETS = [
   "./",
   "./index.html",
@@ -8,6 +8,7 @@ const ASSETS = [
   "./icon.svg",
   "./js/levels.js",
   "./js/shield-draw.js",
+  "./js/sound-input.js",
   "./js/engine.js",
   "./js/admob-bridge.js",
   "./js/ads.js",
