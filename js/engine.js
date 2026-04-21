@@ -613,6 +613,19 @@ class Game {
     } else {
       this.giantHand = null;
     }
+    // Multi-phase level (L21): handling special — def punya phase1/phase2
+    // data. loadLevel entry point pakai phase1 as initial. Transition ke
+    // phase2 dilakukan via applyPhaseData() saat trigger terpenuhi.
+    if (def.multiPhase) {
+      this.multiPhaseLevel = def;
+      this.phaseIndex = 1;
+      this._applyPhaseData(def.phase1);
+    } else {
+      this.multiPhaseLevel = null;
+      this.phaseIndex = 0;
+    }
+    this.credits = null;  // credits overlay state, set saat win Phase 2
+
     // Catapult state (L20). Push tile sebagai collidable platform supaya
     // egg bisa berdiri di atas (trigger untuk fire rock).
     if (def.catapult) {
@@ -668,6 +681,9 @@ class Game {
     this.particles.update(dt);
 
     if (this.mode === "home") return; // home mode: tidak ada fisika
+
+    // Credits tick (L21 win sequence). Runs regardless of terminal state.
+    this.updateCredits(dt);
 
     const egg = this.egg;
     const terminal = (egg.state === STATE.BROKEN || egg.state === STATE.LOST || egg.state === STATE.WON);
@@ -770,6 +786,7 @@ class Game {
       this.updateSpawner(dt);
       this.updateTeleportDoor(dt);
       this.updateCatapultAndRocks(dt);
+      this.updateMultiPhase(dt);
 
       // Jika ada hazard yang memecahkan telur frame ini, JANGAN lanjut update
       // visual state (yang akan menimpa BROKEN). Ini fix bug "telur pecah masih jalan".
@@ -788,13 +805,24 @@ class Game {
       if (rectsOverlap(egg.rect(), this.level.doorOut)) {
         // Boss-level gate: L20 butuh giantHand defeated dulu
         if (this.giantHand && !this.giantHand.defeated) {
-          // Door terkunci — egg tidak bisa masuk, hint visual nanti di render
-          // Silent reject: tidak emit event, tidak set state
+          // Silent reject — door locked
+        } else if (this.phaseIndex === 2 && !this.exitUnlocked) {
+          // L21 Phase 2: butuh kedua tombol simultaneously → exitUnlocked
+          // Silent reject
         } else {
           egg.state = STATE.WON;
           this.sound.win();
           this.emitSparkleBurst();
-          this.onEvent({ type: "won" });
+          // L21: trigger credits sequence instead of normal won
+          if (this.multiPhaseLevel && this.multiPhaseLevel.creditsAfterWin) {
+            this.credits = {
+              t: this.multiPhaseLevel.creditsAfterWin.durationMs || 4500,
+              data: this.multiPhaseLevel.creditsAfterWin
+            };
+            // Do NOT emit "won" yet — wait for credits to finish
+          } else {
+            this.onEvent({ type: "won" });
+          }
           return;
         }
       }
@@ -1922,6 +1950,78 @@ class Game {
     }
   }
 
+  // -------------- Multi-phase level (L21) --------------
+  // Update button sustain window + check simultaneous press → unlock exit.
+  // Juga update owner follower (chase egg di semua floor via lerp).
+  updateMultiPhase(dt) {
+    if (!this.multiPhaseLevel) return;
+
+    // Phase 1: egg memasuki pintu rumah yang sudah opened → transition
+    if (this.phaseIndex === 1 && this.houses) {
+      const eggR = this.egg.rect();
+      for (const h of this.houses) {
+        if (!h.opened) continue;
+        const doorRect = { x: h.doorX, y: h.doorY, w: h.doorW, h: h.doorH };
+        if (rectsOverlap(eggR, doorRect)) {
+          // Egg entering opened door — sparkle di pintu + transition
+          this.particles.emit(14, h.doorX + h.doorW/2, h.doorY + h.doorH/2, {
+            life: 900, color: "#ffd54f", shape: "star",
+            sizeMin: PX, sizeMax: PX*2, speedMin: 1.5, speedMax: 3.5,
+            spread: Math.PI*2, gravity: 0
+          });
+          this.transitionToPhase2();
+          return;
+        }
+      }
+    }
+
+    if (this.phaseIndex !== 2) return;
+
+    // Owner follower: lerp position toward egg (offset trailing). Tidak
+    // pakai physics — "ghost-like" smooth follow, tembus platform. Simple
+    // tapi visually readable — owner tidak ketinggalan di floor bawah kalau
+    // egg lompat ke atas.
+    if (this.roomOwner) {
+      const ownerSpeed = 1.6;  // slower dari egg (2.2) supaya trailing
+      const targetX = this.egg.x - 30;  // offset kiri supaya tidak overlap
+      const targetY = this.egg.y;
+      const dx = targetX - this.roomOwner.x;
+      const dy = targetY - this.roomOwner.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 5) {
+        const step = Math.min(ownerSpeed, dist);
+        this.roomOwner.x += (dx / dist) * step;
+        this.roomOwner.y += (dy / dist) * step;
+      }
+      // Clamp ke bounds supaya owner tidak keluar canvas
+      const b = this.level.bounds;
+      this.roomOwner.x = Math.max(b.x, Math.min(b.x + b.w - 24, this.roomOwner.x));
+      this.roomOwner.y = Math.max(b.y, Math.min(b.y + b.h - 30, this.roomOwner.y));
+    }
+
+    if (!this.roomButtons || this.roomButtons.length < 2) return;
+    // Expire pressed state setelah sustainMs (kecuali lagi di-hold oleh pointer)
+    for (const b of this.roomButtons) {
+      if (b.pressedAt && (this.timeMs - b.pressedAt) > this.buttonSustainMs) {
+        b.pressedAt = 0;
+        b.pressed = false;
+      }
+    }
+    // Check: semua button pressed (pressedAt != 0) simultaneously?
+    const allPressed = this.roomButtons.every(b => b.pressedAt > 0);
+    this.exitUnlocked = allPressed || this.exitUnlocked;  // sticky unlock
+  }
+
+  // Credits tick (after win Phase 2). Countdown → goHome.
+  updateCredits(dt) {
+    if (!this.credits) return;
+    this.credits.t -= dt;
+    if (this.credits.t <= 0) {
+      this.credits = null;
+      if (this.onEvent) this.onEvent({ type: "creditsDone" });
+    }
+  }
+
   // -------------- Giant Hand boss (L20) --------------
   // State machine: rest → aim → descend → stuck → rise → rest.
   // Catapult fires rocks yang damage hand selama phase "stuck".
@@ -2437,8 +2537,10 @@ class Game {
       Math.round((Math.random()-0.5)*this.shake/PX)*PX);
     if (!this.level) { ctx.restore(); return; }
 
-    // Langit biru + awan
-    this.drawSky();
+    // Background: indoor (wooden planks, no clouds) atau sky (clouds drift).
+    // indoorMode di-set di _applyPhaseData saat phase 2 aktif.
+    if (this.indoorMode) this.drawInterior();
+    else this.drawSky();
 
     // Background decoration: gunung berapi (level 12) - faded di kejauhan
     if (this.level.volcano) this.drawVolcano(this.level.volcano);
@@ -2557,6 +2659,11 @@ class Game {
     // Nail rain (level 13): di atas egg supaya jelas paku yang akan menimpa
     if (this.fallingNails && this.fallingNails.length) this.drawNails();
 
+    // Multi-phase (L21): render houses di phase 1, buttons + owner di phase 2
+    if (this.houses && this.houses.length) this.drawHouses();
+    if (this.roomButtons && this.roomButtons.length) this.drawRoomButtons();
+    if (this.roomOwner) this.drawRoomOwner();
+
     // Boss Giant Hand (L20): shadow target + descending arm + HP
     if (this.giantHand) this.drawGiantHand();
     // Catapult (L20) — render setelah platforms (egg bisa berdiri di atasnya)
@@ -2577,6 +2684,136 @@ class Game {
     // dapat subtext tambahan tentang mode gambar.
     if (this.paused) this.drawPauseHUD();
 
+    // Credits overlay (L21 win) — render on top of everything
+    if (this.credits) this.drawCredits();
+
+    ctx.restore();
+  }
+
+  drawHouses() {
+    const ctx = this.ctx;
+    for (const h of this.houses) {
+      ctx.save();
+      // House body — SAMA untuk semua rumah (no visual distinction per user request)
+      ctx.fillStyle = "#8b6a4a";
+      ctx.fillRect(h.x, h.y, h.w, h.h);
+      // Roof triangle
+      ctx.fillStyle = "#6a3a1a";
+      ctx.beginPath();
+      ctx.moveTo(h.x - 6, h.y);
+      ctx.lineTo(h.x + h.w/2, h.y - 30);
+      ctx.lineTo(h.x + h.w + 6, h.y);
+      ctx.closePath();
+      ctx.fill();
+      // Chimney
+      ctx.fillStyle = "#4a2a0a";
+      ctx.fillRect(h.x + h.w - 18, h.y - 26, 8, 14);
+      // Outline
+      ctx.strokeStyle = "#0f0f0f";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(h.x, h.y, h.w, h.h);
+      // Door — hanya dark (tertutup) atau hijau (terbuka). Tidak ada
+      // intermediate color untuk partial knock (no progress indicator).
+      const doorColor = h.opened ? "#4caf50" : "#3a2010";
+      ctx.fillStyle = doorColor;
+      ctx.fillRect(h.doorX, h.doorY, h.doorW, h.doorH);
+      ctx.strokeStyle = "#0f0f0f";
+      ctx.strokeRect(h.doorX, h.doorY, h.doorW, h.doorH);
+      // Door handle
+      ctx.fillStyle = "#ffd54f";
+      ctx.fillRect(h.doorX + h.doorW - 6, h.doorY + h.doorH/2 - 2, 3, 4);
+      // Window
+      ctx.fillStyle = "#a8d8ff";
+      ctx.fillRect(h.x + 8, h.y + 10, 18, 16);
+      ctx.strokeRect(h.x + 8, h.y + 10, 18, 16);
+      ctx.restore();
+    }
+  }
+
+  drawRoomButtons() {
+    const ctx = this.ctx;
+    for (const b of this.roomButtons) {
+      ctx.save();
+      // Button base
+      ctx.fillStyle = b.pressedAt > 0 ? "#4caf50" : "#c0392b";
+      ctx.fillRect(b.x, b.y, b.w, b.h);
+      ctx.strokeStyle = "#0f0f0f";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(b.x, b.y, b.w, b.h);
+      // Label
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 10px 'Press Start 2P', monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("F" + b.floor, b.x + b.w/2, b.y + b.h/2);
+      // Sustain ring indicator (pressed countdown)
+      if (b.pressedAt > 0) {
+        const remaining = 1 - Math.min(1, (this.timeMs - b.pressedAt) / this.buttonSustainMs);
+        ctx.fillStyle = "rgba(255,255,255,0.6)";
+        ctx.fillRect(b.x, b.y - 4, b.w * remaining, 2);
+      }
+      ctx.restore();
+    }
+  }
+
+  drawRoomOwner() {
+    const ctx = this.ctx;
+    const o = this.roomOwner;
+    // Small egg-like character (simplified: oval + eyes)
+    ctx.save();
+    ctx.fillStyle = "#fde8b8";  // pale egg color
+    ctx.beginPath();
+    ctx.ellipse(o.x + 12, o.y + 16, 10, 14, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.strokeStyle = "#0f0f0f";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // Eyes
+    ctx.fillStyle = "#0f0f0f";
+    ctx.fillRect(o.x + 9, o.y + 12, 2, 2);
+    ctx.fillRect(o.x + 14, o.y + 12, 2, 2);
+    // Friendly smile
+    ctx.beginPath();
+    ctx.arc(o.x + 12, o.y + 19, 3, 0, Math.PI);
+    ctx.stroke();
+    // Label above
+    ctx.fillStyle = "#0f0f0f";
+    ctx.font = "bold 8px 'Press Start 2P', monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("Owner", o.x + 12, o.y - 4);
+    ctx.restore();
+  }
+
+  drawCredits() {
+    const ctx = this.ctx;
+    const cw = this.canvas.width, ch = this.canvas.height;
+    const c = this.credits.data;
+    // Fade in/out
+    const totalT = c.durationMs || 4500;
+    const elapsed = totalT - this.credits.t;
+    const fadeIn = Math.min(1, elapsed / 500);
+    const fadeOut = Math.min(1, this.credits.t / 500);
+    const alpha = Math.min(fadeIn, fadeOut);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    // Dark background
+    ctx.fillStyle = "rgba(15,15,15,0.92)";
+    ctx.fillRect(0, 0, cw, ch);
+    // Title "Congratulations!"
+    ctx.fillStyle = "#ffd54f";
+    ctx.font = "bold 54px 'Press Start 2P', monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText(c.title || "Congratulations!", cw/2, ch/2 - 30);
+    // Subtitle
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 18px 'Press Start 2P', monospace";
+    ctx.fillText(c.subtitle || "Director & Game Maker:", cw/2, ch/2 + 30);
+    // Author name
+    ctx.fillStyle = "#4caf50";
+    ctx.font = "bold 32px 'Press Start 2P', monospace";
+    ctx.fillText(c.author || "Indrawan", cw/2, ch/2 + 80);
+    // Particles decorative (di-emit dari engine?) skip for now
     ctx.restore();
   }
 
@@ -2985,6 +3222,54 @@ class Game {
       if (dx*dx + dy*dy <= h.r * h.r) return true;
     }
     return false;
+  }
+
+  drawInterior() {
+    // Interior background: wooden planks horizontal pattern. Dipakai di
+    // Phase 2 level multi-phase (L21). Tanpa awan (indoor, no sky view).
+    const ctx = this.ctx;
+    const cw = this.canvas.width, ch = this.canvas.height;
+    // Base wood tone
+    ctx.fillStyle = "#c8a56b";
+    ctx.fillRect(0, 0, cw, ch);
+    // Horizontal plank lines — setiap 40px baris, dengan shade alternating
+    for (let y = 0; y < ch; y += 40) {
+      // Plank top shade
+      ctx.fillStyle = "#b8925a";
+      ctx.fillRect(0, y, cw, 2);
+      // Plank bottom darker
+      ctx.fillStyle = "#8b6a4a";
+      ctx.fillRect(0, y + 38, cw, 2);
+      // Vertical plank separators (staggered per row)
+      const offset = (y / 40 % 2) * 80;
+      ctx.fillStyle = "#6a4a2a";
+      for (let x = offset; x < cw; x += 160) {
+        ctx.fillRect(x, y + 2, 2, 36);
+      }
+    }
+    // Dekorasi: jendela di atas (optional simpler — frame kecil)
+    ctx.fillStyle = "#6a3a1a";
+    ctx.fillRect(80, 40, 100, 4);
+    ctx.fillRect(80, 40, 4, 100);
+    ctx.fillRect(176, 40, 4, 100);
+    ctx.fillRect(80, 136, 100, 4);
+    ctx.fillStyle = "#a8d8ff";
+    ctx.fillRect(84, 44, 92, 92);
+    // Frame divider
+    ctx.fillStyle = "#6a3a1a";
+    ctx.fillRect(128, 44, 4, 92);
+    ctx.fillRect(84, 86, 92, 4);
+    // Jendela kanan juga
+    ctx.fillStyle = "#6a3a1a";
+    ctx.fillRect(cw - 180, 40, 100, 4);
+    ctx.fillRect(cw - 180, 40, 4, 100);
+    ctx.fillRect(cw - 84, 40, 4, 100);
+    ctx.fillRect(cw - 180, 136, 100, 4);
+    ctx.fillStyle = "#a8d8ff";
+    ctx.fillRect(cw - 176, 44, 92, 92);
+    ctx.fillStyle = "#6a3a1a";
+    ctx.fillRect(cw - 132, 44, 4, 92);
+    ctx.fillRect(cw - 176, 86, 92, 4);
   }
 
   drawCloud(cx, cy, size) {
@@ -4009,6 +4294,106 @@ class Game {
   shieldAddPoint(x, y)    { if (this.shield) this.shield.addPoint(x, y); }
   shieldEndStroke()       { if (this.shield) this.shield.endStroke(); }
   shieldClear()           { if (this.shield) this.shield.clear(); }
+
+  // ----- Multi-phase level (L21) helpers -----
+  // Swap level platforms/hazards/etc dari phase data. Egg di-reset ke start
+  // phase baru. Dipanggil saat loadLevel (phase1) dan saat transition (phase2).
+  _applyPhaseData(phase) {
+    if (!phase) return;
+    // Clone platforms supaya mutations (crumble state, removed, etc) tidak
+    // persist antar phase reloads.
+    this.level.platforms = (phase.platforms || []).map(p => ({ ...p }));
+    this.level.hazards = (phase.hazards || []).map(h => ({ ...h }));
+    if (phase.start) {
+      this.egg.x = phase.start.x;
+      this.egg.y = phase.start.y;
+      this.egg.vx = 0; this.egg.vy = 0;
+    }
+    if (phase.doorIn) this.level.doorIn = { ...phase.doorIn };
+    if (phase.doorOut) this.level.doorOut = { ...phase.doorOut };
+    this.houses = (phase.houses || []).map(h => ({ ...h, knocks: 0, opened: false }));
+    this.roomButtons = (phase.buttons || []).map(b => ({ ...b, pressed: false, pressedAt: 0 }));
+    this.roomOwner = phase.owner ? { ...phase.owner } : null;
+    this.indoorMode = !!phase.indoor;
+    this.buttonSustainMs = phase.sustainMs || 2000;
+    // Boxes: draggable/pushable. Reuse Box class dari Level 6 infrastructure.
+    this.boxes = (phase.boxes || []).map(b => new Box(b.x, b.y, b.w || 36, b.h || 36));
+  }
+
+  // Advance ke phase berikutnya (L21: phase1 → phase2)
+  transitionToPhase2() {
+    if (!this.multiPhaseLevel || this.phaseIndex >= 2) return;
+    this.phaseIndex = 2;
+    this._applyPhaseData(this.multiPhaseLevel.phase2);
+    // Particle burst for transition flair
+    this.particles.emit(20, this.egg.x + 12, this.egg.y + 16, {
+      life: 800, color: "#ffd54f", shape: "star",
+      sizeMin: PX, sizeMax: PX*2, speedMin: 2, speedMax: 5,
+      spread: Math.PI*2, gravity: 0.1
+    });
+    this.sound.win();
+  }
+
+  // Check apakah pointer (x,y) kena pintu rumah. Return house object atau null.
+  hitHouseDoor(x, y) {
+    if (!this.houses) return null;
+    for (const h of this.houses) {
+      if (h.opened) continue;
+      if (x >= h.doorX && x <= h.doorX + h.doorW &&
+          y >= h.doorY && y <= h.doorY + h.doorH) return h;
+    }
+    return null;
+  }
+
+  // Dipanggil main.js saat tap pintu rumah. Increment knock, open kalau cukup.
+  // Transition ke phase 2 TIDAK auto-fire — egg harus physically enter pintu
+  // (overlap check di updateMultiPhase).
+  knockHouse(house) {
+    if (!house || house.opened) return;
+    house.knocks++;
+    this.sound.thud();
+    // Particle burst at door (feedback)
+    this.particles.emit(4, house.doorX + house.doorW/2, house.doorY + house.doorH/2, {
+      life: 300, color: "#8b5a3a", shape: "block",
+      sizeMin: PX, sizeMax: PX*2, speedMin: 1, speedMax: 2,
+      spread: Math.PI*2, gravity: 0.15
+    });
+    if (house.knocks >= house.knocksNeeded) {
+      house.opened = true;
+      if (house.isKey) {
+        // Door opened — sound cue saja. Egg harus physically enter pintu
+        // (overlap check di updateMultiPhase) untuk trigger transition.
+        this.sound.win();
+        this.particles.emit(12, house.doorX + house.doorW/2, house.doorY + house.doorH/2, {
+          life: 500, color: "#ffd54f", shape: "star",
+          sizeMin: PX, sizeMax: PX*2, speedMin: 1.5, speedMax: 3,
+          spread: Math.PI*2, gravity: 0.05
+        });
+      }
+    }
+  }
+
+  // Check button hit + register press (main.js call saat pointerdown).
+  // Support multi-touch: setiap pointer event call method ini, kalau kena
+  // tombol → set pressed + pressedAt. Sustain window handle multi-touch vs
+  // single-pointer case.
+  pressRoomButton(x, y) {
+    if (!this.roomButtons) return false;
+    let hit = false;
+    for (const b of this.roomButtons) {
+      if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
+        b.pressed = true;
+        b.pressedAt = this.timeMs;
+        hit = true;
+      }
+    }
+    return hit;
+  }
+  releaseRoomButtons() {
+    // Called saat pointer up — single-pointer jadi tidak "stick"
+    if (!this.roomButtons) return;
+    for (const b of this.roomButtons) b.pressed = false;
+  }
 
   // ----- Time zone (level 18) API untuk main.js -----
   isTimeZoneMode() {
