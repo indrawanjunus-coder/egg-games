@@ -110,6 +110,27 @@ html, body {
 }
 .dbtn:active { transform: translateY(2px); box-shadow: 0 2px 0 #4a4a4a; background: rgba(15,15,15,0.85); }
 
+/* Test level grid di admin panel — no ads QA access. */
+.test-level-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 4px;
+  margin-top: 6px;
+}
+.test-lvl-btn {
+  padding: 8px 0;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  font-weight: bold;
+  border: 2px solid #0f0f0f;
+  background: #f7f7f7;
+  color: #0f0f0f;
+  cursor: pointer;
+  text-align: center;
+}
+.test-lvl-btn:hover { background: #ffeb3b; }
+.test-lvl-btn:active { background: #fbc02d; transform: translate(1px, 1px); }
+
 .overlay {
   position: fixed; inset: 0;
   background: rgba(20,20,40,.45);
