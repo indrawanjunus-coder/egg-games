@@ -831,6 +831,99 @@ const LEVELS = [
         groundY: 420
       }
     }
+  },
+
+  // ---------- LEVEL 21: RUMAH PEGUNUNGAN - multi-phase finale ----------
+  // Phase 1 (mountain): 5 stepped tiers + 5 houses. Telur tap pintu rumah
+  // untuk ketuk. Rumah #3 (tengah) butuh 2 ketukan untuk buka. Setelah buka
+  // → auto-transition ke Phase 2.
+  //
+  // Phase 2 (indoor): 3 lantai (F1 ground, F2 atas, F3 paling atas).
+  // 2 tombol di F2 dan F3 — harus pressed simultaneously (sustain 2s fallback
+  // untuk single-pointer devices). Both pressed → exit door unlock. Masuk
+  // exit → credits "Congratulations! Director & Game Maker: Indrawan".
+  //
+  // Simplifikasi dari spec: NPC follower di-replace sprite static di F1.
+  // Stairs = platform gap untuk jump (bukan ramp miring).
+  {
+    title: "Level 21 - Rumah Pegunungan",
+    hint: "Naik gunung, ketuk pintu rumah #3 (tengah) dua kali!",
+    bounds: { x: 40, y: 40, w: 1120, h: 440 },
+    // Top-level fields untuk loadLevel initial setup (mirror phase1).
+    // Multi-phase engine akan overwrite via _applyPhaseData.
+    start: { x: 80, y: 388 },
+    doorIn: { x: 70, y: 350, w: 48, h: 70 },    // bottom sit on tier 1 top (y=420)
+    doorOut: { x: -100, y: -100, w: 1, h: 1 },
+    platforms: [
+      { x: 40,  y: 420, w: 240, h: 60 }
+    ],
+    hazards: [],
+    slopes: [],
+    trees: [],
+    multiPhase: true,
+    // Phase 1: mountain climb
+    phase1: {
+      start: { x: 80, y: 388 },
+      doorIn: { x: 70, y: 350, w: 48, h: 70 },   // bottom on tier 1 (y=420)
+      // No normal exit — phase transition via house knock
+      doorOut: { x: -100, y: -100, w: 1, h: 1 },
+      platforms: [
+        { x: 40,  y: 420, w: 240, h: 60 },   // tier 1 (start)
+        { x: 280, y: 380, w: 180, h: 100 },  // tier 2 (house A)
+        { x: 460, y: 340, w: 180, h: 140 },  // tier 3 (house B)
+        { x: 640, y: 300, w: 180, h: 180 },  // tier 4 (KEY house C)
+        { x: 820, y: 260, w: 180, h: 220 },  // tier 5 (house D)
+        { x: 1000,y: 220, w: 160, h: 260 }   // tier 6 (house E)
+      ],
+      // Each house: sits on tier, has door rect for tap detection.
+      // knocksNeeded 99 = locked forever (only house #3 can open).
+      houses: [
+        { x: 300, y: 320, w: 100, h: 60, doorX: 336, doorY: 340, doorW: 28, doorH: 40, knocksNeeded: 99 },
+        { x: 480, y: 280, w: 100, h: 60, doorX: 516, doorY: 300, doorW: 28, doorH: 40, knocksNeeded: 99 },
+        // KEY house — middle, tier 4. 2 knocks to unlock.
+        { x: 660, y: 240, w: 100, h: 60, doorX: 696, doorY: 260, doorW: 28, doorH: 40, knocksNeeded: 2, isKey: true },
+        { x: 840, y: 200, w: 100, h: 60, doorX: 876, doorY: 220, doorW: 28, doorH: 40, knocksNeeded: 99 },
+        { x: 1020,y: 160, w: 100, h: 60, doorX: 1056,doorY: 180, doorW: 28, doorH: 40, knocksNeeded: 99 }
+      ]
+    },
+    // Phase 2: indoor — 3 floors + 2 stair platforms. Gap F1→F2 / F2→F3
+    // masing-masing 100px, melebihi max jump 70px → butuh tangga halfway.
+    // Jump per step = 50px, well within jump budget.
+    phase2: {
+      start: { x: 120, y: 388 },
+      doorIn: { x: 70, y: 350, w: 48, h: 70 },
+      doorOut: { x: 1080, y: 350, w: 48, h: 70 },  // right F1
+      platforms: [
+        { x: 40,  y: 420, w: 1120, h: 60 },    // F1 (ground)
+        { x: 900, y: 370, w: 120, h: 12 },     // STAIR 1→2 (kanan)
+        { x: 200, y: 320, w: 840,  h: 16 },    // F2 (middle floor)
+        { x: 140, y: 270, w: 120, h: 12 },     // STAIR 2→3 (kiri)
+        { x: 40,  y: 220, w: 840,  h: 16 }     // F3 (top floor)
+      ],
+      // Buttons: F2 right + F3 left — must press simultaneously (or sustain)
+      buttons: [
+        { id: "btn_f2", x: 960, y: 300, w: 64, h: 20, floor: 2 },
+        { id: "btn_f3", x: 100, y: 200, w: 64, h: 20, floor: 3 }
+      ],
+      sustainMs: 2000,     // window untuk "simultaneous" di single-pointer
+      // Boxes yang bisa di-drag / di-push egg — di F1, F2, F3.
+      // Posisi: box.y = platform.y - box.h (box duduk di atas platform).
+      boxes: [
+        { x: 400, y: 384, w: 36, h: 36 },   // F1 (y=420 - 36)
+        { x: 500, y: 284, w: 36, h: 36 },   // F2 (y=320 - 36)
+        { x: 400, y: 184, w: 36, h: 36 }    // F3 (y=220 - 36)
+      ],
+      // Owner egg (follower NPC)
+      owner: { x: 200, y: 388 },
+      indoor: true         // render flag: pakai interior theme bukan sky
+    },
+    // Credits setelah win Phase 2
+    creditsAfterWin: {
+      title: "Congratulations!",
+      subtitle: "Director & Game Maker:",
+      author: "Indrawan",
+      durationMs: 4500
+    }
   }
 ];
 
