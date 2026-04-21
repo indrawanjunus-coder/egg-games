@@ -189,24 +189,24 @@
 
       titleEl.textContent = type + " AD";
       bodyEl.textContent = cfg.adMode === "test"
-        ? "[Mode TEST - Google test ad simulator]"
-        : "[Native SDK tidak tersedia - simulator fallback]";
+        ? "[TEST mode — Google test ad simulator]"
+        : "[Native SDK not available — simulator fallback]";
       let remain = seconds;
       timerEl.textContent = remain + "s";
       skipBtn.disabled = true;
-      skipBtn.textContent = "Skip dalam " + remain + "s";
+      skipBtn.textContent = "Skip in " + remain + "s";
       adEl.hidden = false;
 
       const interval = setInterval(() => {
         remain--;
         if (remain > 0) {
           timerEl.textContent = remain + "s";
-          skipBtn.textContent = "Skip dalam " + remain + "s";
+          skipBtn.textContent = "Skip in " + remain + "s";
         } else {
           clearInterval(interval);
-          timerEl.textContent = "Selesai";
+          timerEl.textContent = "Done";
           skipBtn.disabled = false;
-          skipBtn.textContent = "TUTUP";
+          skipBtn.textContent = "CLOSE";
         }
       }, 1000);
 
