@@ -89,7 +89,7 @@
   function startLevel(i) {
     // Guard: kalau lives habis, langsung munculkan lives-out overlay bukan load level
     if (lives <= 0) {
-      showLivesOutOverlay("NYAWA HABIS", "Pilih: tambah nyawa atau ulang level.");
+      showLivesOutOverlay("OUT OF LIVES", "Choose: add a life or restart the level.");
       return;
     }
     current = Math.max(0, Math.min(LEVELS.length - 1, i));
@@ -196,17 +196,17 @@
       // Advance continuation — next natural play = current+1, no ad
       lastPlayedLevel = Math.min(LEVELS.length - 1, current + 1);
       saveLastPlayed();
-      showOverlay("LOLOS!", "Telur berhasil kabur lewat pintu.", true);
+      showOverlay("CLEARED!", "The egg escaped through the door.", true);
     } else if (ev.type === "broken" || ev.type === "lost") {
       lives = Math.max(0, lives - 1);
       saveLives();
       renderHearts();
-      const title = ev.type === "broken" ? "PECAH!" : "HILANG!";
-      const reason = ev.type === "broken" ? `Telur pecah (${ev.reason}).` : `Telur ${ev.reason}.`;
+      const title = ev.type === "broken" ? "CRACKED!" : "LOST!";
+      const reason = ev.type === "broken" ? `Egg cracked (${ev.reason}).` : `Egg ${ev.reason}.`;
       if (lives === 0) {
-        showLivesOutOverlay(title + " NYAWA HABIS", reason);
+        showLivesOutOverlay(title + " OUT OF LIVES", reason);
       } else {
-        showOverlay(title, reason + " Sisa nyawa: " + lives + ".", false);
+        showOverlay(title, reason + " Lives remaining: " + lives + ".", false);
       }
     }
   }
@@ -245,8 +245,8 @@
     btnExtend.hidden = false;
     btnRestartAd.hidden = false;
     const adsEnabled = !!(window.EggAds && window.EggAds.loadConfig().enabled);
-    btnExtend.textContent = adsEnabled ? "+1 NYAWA (IKLAN)" : "+1 NYAWA";
-    btnRestartAd.textContent = adsEnabled ? "ULANG LEVEL (IKLAN)" : "ULANG LEVEL";
+    btnExtend.textContent = adsEnabled ? "+1 LIFE (AD)" : "+1 LIFE";
+    btnRestartAd.textContent = adsEnabled ? "RESTART LEVEL (AD)" : "RESTART LEVEL";
     renderHearts();
     overlay.hidden = false;
   }
@@ -349,7 +349,7 @@
         renderHearts();
         startLevel(current);
       } else {
-        overlayMsg.textContent = "Iklan tidak selesai. Nyawa tidak ditambah.";
+        overlayMsg.textContent = "Ad not completed. No life added.";
       }
     } finally {
       btnExtend.disabled = false;
